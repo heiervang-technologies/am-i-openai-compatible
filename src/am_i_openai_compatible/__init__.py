@@ -7,12 +7,13 @@ Public API:
     report = probe_url("http://localhost:8080", name="my-server")
     print(report["summary"])
 """
+
 from __future__ import annotations
 
 from .endpoints import ENDPOINTS, Endpoint
 from .schemas import (
-    ChatCompletionResponse,
     ChatCompletionChunk,
+    ChatCompletionResponse,
     CompletionResponse,
     EmbeddingsResponse,
     ImagesResponse,

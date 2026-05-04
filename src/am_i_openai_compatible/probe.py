@@ -20,14 +20,13 @@ Usage:
   python probe.py --base-url http://localhost:8080 --report /tmp/x.json
   python probe.py --base-url http://… --skip-phase-b   # existence only
 """
+
 from __future__ import annotations
 
 import argparse
 import base64
 import io
 import json
-import math
-import struct
 import sys
 import time
 import wave
@@ -39,16 +38,18 @@ import httpx
 
 from .endpoints import ENDPOINTS, Endpoint
 
-
 # ---------------------------------------------------------------------------
 # Tiny synthetic media — kept frugal (1 s of silence, 1×1 PNG) to minimize
 # bandwidth and decoder cost on the server.
 # ---------------------------------------------------------------------------
 
+
 def _silent_wav() -> bytes:
     buf = io.BytesIO()
     with wave.open(buf, "wb") as w:
-        w.setnchannels(1); w.setsampwidth(2); w.setframerate(16000)
+        w.setnchannels(1)
+        w.setsampwidth(2)
+        w.setframerate(16000)
         w.writeframes(b"\x00\x00" * 16000)
     return buf.getvalue()
 
@@ -65,16 +66,17 @@ def _tiny_png() -> bytes:
 # Report event — same schema as conftest.py emits.
 # ---------------------------------------------------------------------------
 
+
 @dataclass
 class Event:
-    service: str        # for the prober this is the --name argument
-    endpoint: str       # the endpoint label (path + group hint)
-    phase: str          # "A" / "B"
-    status: str         # PASS / WARN / FAIL / SKIP
+    service: str  # for the prober this is the --name argument
+    endpoint: str  # the endpoint label (path + group hint)
+    phase: str  # "A" / "B"
+    status: str  # PASS / WARN / FAIL / SKIP
     detail: str
     method: str = ""
     http_status: int = 0
-    kind: str = ""      # core / ext / ours
+    kind: str = ""  # core / ext / ours
     group: str = ""
 
 
@@ -82,15 +84,19 @@ class Event:
 # Helpers
 # ---------------------------------------------------------------------------
 
+
 def _get_dotted(obj: Any, dotted: str) -> tuple[bool, Any]:
     """Return (found, value) for a dotted path like 'choices.0.message.content'."""
     cur = obj
     for part in dotted.split("."):
         if isinstance(cur, list):
-            try: cur = cur[int(part)]
-            except (ValueError, IndexError): return False, None
+            try:
+                cur = cur[int(part)]
+            except (ValueError, IndexError):
+                return False, None
         elif isinstance(cur, dict):
-            if part not in cur: return False, None
+            if part not in cur:
+                return False, None
             cur = cur[part]
         else:
             return False, None
@@ -128,18 +134,26 @@ def _classify_kind(model_id: str) -> set[str]:
 # Prober
 # ---------------------------------------------------------------------------
 
+
 class Prober:
-    def __init__(self, base_url: str, name: str, *,
-                 phase_b: bool = True, conn_timeout: float = 4.0,
-                 req_timeout: float = 60.0, http2: bool = False):
+    def __init__(
+        self,
+        base_url: str,
+        name: str,
+        *,
+        phase_b: bool = True,
+        conn_timeout: float = 4.0,
+        req_timeout: float = 60.0,
+        http2: bool = False,
+    ):
         self.base = base_url.rstrip("/")
         self.name = name
         self.phase_b = phase_b
         self.conn_timeout = conn_timeout
         self.req_timeout = req_timeout
-        self.client = httpx.Client(timeout=httpx.Timeout(req_timeout,
-                                                          connect=conn_timeout),
-                                   http2=http2)
+        self.client = httpx.Client(
+            timeout=httpx.Timeout(req_timeout, connect=conn_timeout), http2=http2
+        )
         self.events: list[Event] = []
         self.models_by_kind: dict[str, list[str]] = {}
         self._models_raw: list[dict] = []
@@ -173,7 +187,8 @@ class Prober:
         self._models_raw = [d for d in data if isinstance(d, dict)]
         for m in self._models_raw:
             mid = m.get("id")
-            if not isinstance(mid, str): continue
+            if not isinstance(mid, str):
+                continue
             for k in _classify_kind(mid):
                 self.models_by_kind.setdefault(k, []).append(mid)
 
@@ -191,9 +206,11 @@ class Prober:
         # path templating with the most permissive sniffed id (or a
         # placeholder that should still 4xx-not-404 on a real server).
         if "{model}" in path:
-            mid = ((self.models_by_kind.get(ep.requires_model_kind or "chat")
-                    or [m["id"] for m in self._models_raw if "id" in m]
-                    or ["__probe_nonexistent__"]))[0]
+            mid = (
+                self.models_by_kind.get(ep.requires_model_kind or "chat")
+                or [m["id"] for m in self._models_raw if "id" in m]
+                or ["__probe_nonexistent__"]
+            )[0]
             path = path.replace("{model}", mid)
 
         # Strip the [stream] label we use to disambiguate streaming chat.
@@ -263,26 +280,22 @@ class Prober:
             return "FAIL", "non-JSON response", r.status_code
         return self._validate_shape(ep, body, r.status_code)
 
-    def _phase_b_post(self, ep: Endpoint,
-                      model_id: str | None) -> tuple[str, str, int]:
+    def _phase_b_post(self, ep: Endpoint, model_id: str | None) -> tuple[str, str, int]:
         if ep.body and "{model}" in json.dumps(ep.body) and model_id is None:
             return "SKIP", f"no model of kind '{ep.requires_model_kind}'", 0
 
-        body = json.loads(json.dumps(ep.body or {}).replace(
-            "{model}", model_id or ""))
+        body = json.loads(json.dumps(ep.body or {}).replace("{model}", model_id or ""))
         url = self.base + ep.path.split("[")[0]
         stream = bool(body.pop("stream", False)) if isinstance(body, dict) else False
 
         try:
             if ep.multipart:
                 files, data = self._multipart_payload(ep, body)
-                r = self.client.post(url, files=files, data=data,
-                                     timeout=self.req_timeout)
+                r = self.client.post(url, files=files, data=data, timeout=self.req_timeout)
             elif stream:
                 return self._phase_b_sse(ep, url, body)
             else:
-                r = self.client.post(url, json=body,
-                                     timeout=self.req_timeout)
+                r = self.client.post(url, json=body, timeout=self.req_timeout)
         except httpx.HTTPError as e:
             return "FAIL", f"http error: {e}", 0
 
@@ -304,34 +317,40 @@ class Prober:
             return "FAIL", "non-JSON response", r.status_code
         return self._validate_shape(ep, body_json, r.status_code)
 
-    def _phase_b_sse(self, ep: Endpoint, url: str,
-                     body: dict) -> tuple[str, str, int]:
-        body = dict(body); body["stream"] = True
-        chunks = 0; saw_done = False; status = 0; ct = ""
+    def _phase_b_sse(self, ep: Endpoint, url: str, body: dict) -> tuple[str, str, int]:
+        body = dict(body)
+        body["stream"] = True
+        chunks = 0
+        saw_done = False
+        status = 0
+        ct = ""
         try:
-            with self.client.stream("POST", url, json=body,
-                                     timeout=self.req_timeout) as r:
-                status = r.status_code; ct = r.headers.get("content-type", "")
+            with self.client.stream("POST", url, json=body, timeout=self.req_timeout) as r:
+                status = r.status_code
+                ct = r.headers.get("content-type", "")
                 if status != 200 or "text/event-stream" not in ct:
-                    return ("FAIL",
-                            f"POST stream → {status} ct={ct!r}", status)
+                    return ("FAIL", f"POST stream → {status} ct={ct!r}", status)
                 for line in r.iter_lines():
-                    if not line.startswith("data:"): continue
+                    if not line.startswith("data:"):
+                        continue
                     data = line[5:].strip()
-                    if data == "[DONE]": saw_done = True; break
-                    try: json.loads(data)
-                    except ValueError: continue
+                    if data == "[DONE]":
+                        saw_done = True
+                        break
+                    try:
+                        json.loads(data)
+                    except ValueError:
+                        continue
                     chunks += 1
-                    if chunks > 32: break  # frugal — don't drain
+                    if chunks > 32:
+                        break  # frugal — don't drain
         except httpx.HTTPError as e:
             return "FAIL", f"http error: {e}", status
         if chunks == 0:
             return "FAIL", "no SSE data chunks", status
-        return ("PASS" if saw_done else "WARN",
-                f"chunks={chunks}, [DONE]={saw_done}", status)
+        return ("PASS" if saw_done else "WARN", f"chunks={chunks}, [DONE]={saw_done}", status)
 
-    def _multipart_payload(self, ep: Endpoint,
-                            body: dict) -> tuple[dict, dict]:
+    def _multipart_payload(self, ep: Endpoint, body: dict) -> tuple[dict, dict]:
         files = {}
         if ep.group == "audio-stt":
             files["file"] = ("probe.wav", _silent_wav(), "audio/wav")
@@ -341,17 +360,16 @@ class Prober:
                 files["mask"] = ("mask.png", _tiny_png(), "image/png")
         return files, body
 
-    def _validate_shape(self, ep: Endpoint, body: Any,
-                         http_status: int) -> tuple[str, str, int]:
+    def _validate_shape(self, ep: Endpoint, body: Any, http_status: int) -> tuple[str, str, int]:
         if not isinstance(ep.expects, tuple) or not ep.expects:
             return "PASS", "200 (no shape check)", http_status
         missing = []
         for k in ep.expects:
             ok, _ = _get_dotted(body, k)
-            if not ok: missing.append(k)
+            if not ok:
+                missing.append(k)
         if missing:
-            return ("FAIL",
-                    f"missing keys: {', '.join(missing)}", http_status)
+            return ("FAIL", f"missing keys: {', '.join(missing)}", http_status)
         return "PASS", "shape ok", http_status
 
     # -- driver -------------------------------------------------------------
@@ -360,10 +378,18 @@ class Prober:
         live, why = self._liveness()
         if not live:
             for ep in ENDPOINTS:
-                self._emit(Event(
-                    service=self.name,
-                    endpoint=ep.path, phase="A", status="SKIP",
-                    detail=why, method=ep.method, kind=ep.kind, group=ep.group))
+                self._emit(
+                    Event(
+                        service=self.name,
+                        endpoint=ep.path,
+                        phase="A",
+                        status="SKIP",
+                        detail=why,
+                        method=ep.method,
+                        kind=ep.kind,
+                        group=ep.group,
+                    )
+                )
             return self.events
 
         self._sniff_models()
@@ -372,24 +398,41 @@ class Prober:
             label = ep.path
             # phase A
             a_status, a_detail, a_code = self._phase_a(ep)
-            self._emit(Event(
-                service=self.name, endpoint=label, phase="A",
-                status=a_status, detail=a_detail, method=ep.method,
-                http_status=a_code, kind=ep.kind, group=ep.group))
+            self._emit(
+                Event(
+                    service=self.name,
+                    endpoint=label,
+                    phase="A",
+                    status=a_status,
+                    detail=a_detail,
+                    method=ep.method,
+                    http_status=a_code,
+                    kind=ep.kind,
+                    group=ep.group,
+                )
+            )
 
             # phase B only if A says the route exists
             if a_status != "PASS":
                 continue
-            if ep.path.endswith("/uploads") or ep.path == "/v1/files" \
-                    or ep.path == "/v1/batches":
+            if ep.path.endswith("/uploads") or ep.path == "/v1/files" or ep.path == "/v1/batches":
                 # admin routes — existence is the meaningful test
                 continue
 
             b_status, b_detail, b_code = self._phase_b(ep)
-            self._emit(Event(
-                service=self.name, endpoint=label, phase="B",
-                status=b_status, detail=b_detail, method=ep.method,
-                http_status=b_code, kind=ep.kind, group=ep.group))
+            self._emit(
+                Event(
+                    service=self.name,
+                    endpoint=label,
+                    phase="B",
+                    status=b_status,
+                    detail=b_detail,
+                    method=ep.method,
+                    http_status=b_code,
+                    kind=ep.kind,
+                    group=ep.group,
+                )
+            )
 
         return self.events
 
@@ -398,18 +441,21 @@ class Prober:
 # CLI
 # ---------------------------------------------------------------------------
 
+
 def _argparser() -> argparse.ArgumentParser:
-    p = argparse.ArgumentParser(description=__doc__,
-        formatter_class=argparse.RawDescriptionHelpFormatter)
-    p.add_argument("--base-url", required=True,
-                   help="root URL of the target (e.g. http://llm.ht.local)")
-    p.add_argument("--name", default=None,
-                   help="label for the report (defaults to base-url host)")
-    p.add_argument("--report", default=None,
-                   help="output JSON path "
-                        "(default: tests/openai-compat/report-<name>.json)")
-    p.add_argument("--skip-phase-b", action="store_true",
-                   help="existence-only run (Phase A only)")
+    p = argparse.ArgumentParser(
+        description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
+    )
+    p.add_argument(
+        "--base-url", required=True, help="root URL of the target (e.g. http://llm.ht.local)"
+    )
+    p.add_argument("--name", default=None, help="label for the report (defaults to base-url host)")
+    p.add_argument(
+        "--report",
+        default=None,
+        help="output JSON path (default: tests/openai-compat/report-<name>.json)",
+    )
+    p.add_argument("--skip-phase-b", action="store_true", help="existence-only run (Phase A only)")
     p.add_argument("--conn-timeout", type=float, default=4.0)
     p.add_argument("--req-timeout", type=float, default=60.0)
     return p
@@ -418,13 +464,15 @@ def _argparser() -> argparse.ArgumentParser:
 def main(argv: list[str] | None = None) -> int:
     args = _argparser().parse_args(argv)
     name = args.name or httpx.URL(args.base_url).host or "probe"
-    report = Path(args.report) if args.report else \
-        HERE / f"report-{name}.json"
+    report = Path(args.report) if args.report else Path.cwd() / f"report-{name}.json"
 
-    prober = Prober(args.base_url, name,
-                    phase_b=not args.skip_phase_b,
-                    conn_timeout=args.conn_timeout,
-                    req_timeout=args.req_timeout)
+    prober = Prober(
+        args.base_url,
+        name,
+        phase_b=not args.skip_phase_b,
+        conn_timeout=args.conn_timeout,
+        req_timeout=args.req_timeout,
+    )
     t0 = time.monotonic()
     events = prober.run()
     elapsed = time.monotonic() - t0
@@ -434,7 +482,8 @@ def main(argv: list[str] | None = None) -> int:
     # Quick text summary so the CLI return makes sense without check.sh.
     n = len(events)
     by_status: dict[str, int] = {}
-    for e in events: by_status[e.status] = by_status.get(e.status, 0) + 1
+    for e in events:
+        by_status[e.status] = by_status.get(e.status, 0) + 1
     summary = "  ".join(f"{k}={v}" for k, v in sorted(by_status.items()))
     print(f"probe '{name}': {n} events in {elapsed:.1f}s  ·  {summary}")
     print(f"report: {report}")

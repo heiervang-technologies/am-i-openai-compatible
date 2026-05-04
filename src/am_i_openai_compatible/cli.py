@@ -16,6 +16,7 @@ Subcommands:
     aioc version
         Print version and exit.
 """
+
 from __future__ import annotations
 
 import argparse
@@ -29,11 +30,21 @@ from .endpoints import ENDPOINTS
 def _cmd_spec(args: argparse.Namespace) -> int:
     rows = [e for e in ENDPOINTS if not args.group or e.group == args.group]
     if args.json:
-        print(json.dumps(
-            [{"path": e.path, "method": e.method, "group": e.group,
-              "kind": e.kind, "notes": e.notes} for e in rows],
-            indent=2,
-        ))
+        print(
+            json.dumps(
+                [
+                    {
+                        "path": e.path,
+                        "method": e.method,
+                        "group": e.group,
+                        "kind": e.kind,
+                        "notes": e.notes,
+                    }
+                    for e in rows
+                ],
+                indent=2,
+            )
+        )
         return 0
     width = max(len(e.path) for e in rows) + 2
     print(f"{'PATH':<{width}}{'METHOD':<8}{'GROUP':<10}KIND")
@@ -46,6 +57,7 @@ def _cmd_spec(args: argparse.Namespace) -> int:
 def _cmd_probe(args: argparse.Namespace) -> int:
     # Delegate to probe.py's main with the right argv.
     from . import probe
+
     forwarded = ["--base-url", args.url, "--name", args.name]
     if args.report:
         forwarded += ["--report", args.report]
@@ -58,8 +70,8 @@ def _cmd_probe(args: argparse.Namespace) -> int:
 
 def _cmd_gap(args: argparse.Namespace) -> int:
     from . import gap
-    forwarded = ["--monolith", args.monolith, "--cluster", args.cluster,
-                 "--format", args.format]
+
+    forwarded = ["--monolith", args.monolith, "--cluster", args.cluster, "--format", args.format]
     if args.output:
         forwarded += ["-o", args.output]
     return gap.main(forwarded)
@@ -70,35 +82,33 @@ def build_parser() -> argparse.ArgumentParser:
         prog="aioc",
         description="Am I OpenAI Compatible? — probe any HTTP server.",
     )
-    p.add_argument("--version", action="version",
-                   version=f"%(prog)s {__version__}")
+    p.add_argument("--version", action="version", version=f"%(prog)s {__version__}")
     sub = p.add_subparsers(dest="cmd", required=True)
 
     sp = sub.add_parser("probe", help="probe one base URL")
     sp.add_argument("url", help="base URL, e.g. http://localhost:8080")
-    sp.add_argument("--name", default="server",
-                    help="label written into the report (default: server)")
+    sp.add_argument(
+        "--name", default="server", help="label written into the report (default: server)"
+    )
     sp.add_argument("--report", help="write JSON report to this path")
-    sp.add_argument("--skip-phase-b", action="store_true",
-                    help="existence checks only; do not send minimal bodies")
-    sp.add_argument("--timeout", type=float,
-                    help="per-request timeout in seconds")
+    sp.add_argument(
+        "--skip-phase-b",
+        action="store_true",
+        help="existence checks only; do not send minimal bodies",
+    )
+    sp.add_argument("--timeout", type=float, help="per-request timeout in seconds")
     sp.set_defaults(func=_cmd_probe)
 
     sg = sub.add_parser("gap", help="compare monolith vs per-service reports")
-    sg.add_argument("--monolith", required=True,
-                    help="probe report for the unified surface")
-    sg.add_argument("--cluster", required=True,
-                    help="report.json from the per-service harness")
-    sg.add_argument("--format", choices=("text", "gum", "markdown"),
-                    default="text")
+    sg.add_argument("--monolith", required=True, help="probe report for the unified surface")
+    sg.add_argument("--cluster", required=True, help="report.json from the per-service harness")
+    sg.add_argument("--format", choices=("text", "gum", "markdown"), default="text")
     sg.add_argument("-o", "--output", help="write rendered output here")
     sg.set_defaults(func=_cmd_gap)
 
     ss = sub.add_parser("spec", help="print the canonical endpoint catalog")
     ss.add_argument("--group", help="restrict to one group (chat/audio/...)")
-    ss.add_argument("--json", action="store_true",
-                    help="emit JSON instead of a table")
+    ss.add_argument("--json", action="store_true", help="emit JSON instead of a table")
     ss.set_defaults(func=_cmd_spec)
 
     return p

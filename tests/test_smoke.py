@@ -3,6 +3,7 @@
 These do not hit any real network. The probe-against-mock test lives
 separately in test_probe_mock.py once the respx fixtures are wired up.
 """
+
 from __future__ import annotations
 
 import am_i_openai_compatible as aioc

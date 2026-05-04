@@ -6,6 +6,7 @@ fail clients that add metadata. Spec source: platform.openai.com/docs +
 the openai Python SDK type stubs (verified against vLLM and llama.cpp
 reference implementations).
 """
+
 from __future__ import annotations
 
 from typing import Any, Literal
@@ -123,6 +124,7 @@ class ImagesResponse(_Open):
 
 class VideoJob(_Open):
     """OpenAI Sora-style async video job (extension)."""
+
     id: str
     model: str
     status: Literal["queued", "in_progress", "completed", "failed"]
