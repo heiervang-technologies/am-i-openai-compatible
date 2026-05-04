@@ -1,0 +1,89 @@
+site_name: Am I OpenAI Compatible?
+site_description: Probe any HTTP server for OpenAI API compliance, with an honest matrix of how the OSS implementations actually behave.
+site_url: https://heiervang-technologies.github.io/am-i-openai-compatible/
+repo_url: https://github.com/heiervang-technologies/am-i-openai-compatible
+repo_name: heiervang-technologies/am-i-openai-compatible
+edit_uri: edit/main/docs/
+
+theme:
+  name: material
+  features:
+    - navigation.instant
+    - navigation.tabs
+    - navigation.sections
+    - navigation.expand
+    - navigation.top
+    - navigation.indexes
+    - toc.follow
+    - search.suggest
+    - search.highlight
+    - content.code.copy
+    - content.code.annotate
+    - content.action.edit
+    - content.tabs.link
+  palette:
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      primary: indigo
+      accent: indigo
+      toggle:
+        icon: material/brightness-7
+        name: Switch to dark mode
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      primary: indigo
+      accent: indigo
+      toggle:
+        icon: material/brightness-4
+        name: Switch to light mode
+  icon:
+    repo: fontawesome/brands/github
+
+markdown_extensions:
+  - admonition
+  - attr_list
+  - def_list
+  - footnotes
+  - md_in_html
+  - tables
+  - toc:
+      permalink: true
+  - pymdownx.details
+  - pymdownx.highlight:
+      anchor_linenums: true
+      line_spans: __span
+      pygments_lang_class: true
+  - pymdownx.inlinehilite
+  - pymdownx.snippets
+  - pymdownx.superfences
+  - pymdownx.tabbed:
+      alternate_style: true
+  - pymdownx.tasklist:
+      custom_checkbox: true
+  - pymdownx.tilde
+
+plugins:
+  - search
+
+nav:
+  - Home: index.md
+  - Getting started: getting-started.md
+  - The OpenAI surface:
+    - Overview: spec/index.md
+    - Canonical surface: spec/canonical-surface.md
+    - Models / discovery: spec/models.md
+    - Chat & completions: spec/chat.md
+    - Audio (TTS / STT): spec/audio.md
+    - Images & videos: spec/images-videos.md
+    - Embeddings: spec/embeddings.md
+    - Extensions & quirks: spec/extensions.md
+  - Implementations:
+    - Overview: implementations/index.md
+    - OpenAI (reference): implementations/openai.md
+    - llama.cpp: implementations/llama-cpp.md
+    - vLLM: implementations/vllm.md
+    - Ollama: implementations/ollama.md
+    - LM Studio: implementations/lmstudio.md
+    - TabbyAPI: implementations/tabbyapi.md
+  - Compatibility matrix: compatibility-matrix.md
+  - Contributing: contributing.md
