@@ -37,7 +37,7 @@ For endpoints all servers implement, what's actually different:
 
 | Behavior                                          | OpenAI | vLLM | llama.cpp | Ollama | LM Studio | TabbyAPI |
 |---------------------------------------------------|--------|------|-----------|--------|-----------|----------|
-| Streaming `usage` in last chunk (default)         | ✅     | ⚠️   | ⚠️        | ⚠️     | ⚠️        | ⚠️       |
+| Streaming `usage` when requested via `stream_options.include_usage` | ✅ | ✅ | ✅ | ⚠️ | ✅ | ✅ |
 | Honors `seed` deterministically                   | ✅     | ✅   | ✅        | ⚠️     | ⚠️        | ⚠️       |
 | `response_format: json_schema`                    | ✅     | ✅   | ✅        | ⚠️     | ⚠️        | ⚠️       |
 | `tool_calls[].function.arguments` is a string     | ✅     | ✅   | ✅        | ⚠️     | ✅        | ✅       |

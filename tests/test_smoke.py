@@ -24,7 +24,7 @@ def test_catalog_non_empty():
 
 
 def test_catalog_kinds_are_known():
-    valid = {"core", "ext", "ours"}
+    valid = {"core", "optional", "ext", "ours"}
     for e in aioc.ENDPOINTS:
         assert e.kind in valid, f"{e.path} has unknown kind {e.kind!r}"
 

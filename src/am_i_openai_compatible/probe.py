@@ -27,6 +27,7 @@ import argparse
 import base64
 import io
 import json
+import re
 import sys
 import time
 import wave
@@ -103,6 +104,29 @@ def _get_dotted(obj: Any, dotted: str) -> tuple[bool, Any]:
     return True, cur
 
 
+def _server_error_message(r: httpx.Response) -> str:
+    """Best-effort extraction of the server's own error description.
+
+    OpenAI-style envelopes put it at `error.message`; we fall back to
+    `detail` (FastAPI default) and finally a snippet of the raw text.
+    Used to surface the server's own explanation as a probe hint —
+    much cleaner than guessing config from substrings.
+    """
+    try:
+        body = r.json()
+    except ValueError:
+        return r.text[:120].strip() or f"HTTP {r.status_code}"
+    if isinstance(body, dict):
+        err = body.get("error")
+        if isinstance(err, dict) and isinstance(err.get("message"), str):
+            return err["message"]
+        if isinstance(err, str):
+            return err
+        if isinstance(body.get("detail"), str):
+            return body["detail"]
+    return r.text[:120].strip() or f"HTTP {r.status_code}"
+
+
 def _classify_kind(model_id: str) -> set[str]:
     """Heuristic: tag a model id with the endpoint kinds it likely serves.
 
@@ -145,6 +169,7 @@ class Prober:
         conn_timeout: float = 4.0,
         req_timeout: float = 60.0,
         http2: bool = False,
+        endpoints_filter: str = "",
     ):
         self.base = base_url.rstrip("/")
         self.name = name
@@ -157,6 +182,7 @@ class Prober:
         self.events: list[Event] = []
         self.models_by_kind: dict[str, list[str]] = {}
         self._models_raw: list[dict] = []
+        self._endpoints_filter = re.compile(endpoints_filter) if endpoints_filter else None
 
     # -- network primitives -------------------------------------------------
 
@@ -195,12 +221,20 @@ class Prober:
     # -- phase A ------------------------------------------------------------
 
     def _phase_a(self, ep: Endpoint) -> tuple[str, str, int]:
-        """Return (status, detail, http_status). Status ∈ {PASS, FAIL, SKIP}.
+        """Return (status, detail, http_status).
 
-        For GET endpoints: send GET; 404 = FAIL, anything else = PASS.
-        For POST endpoints: send empty POST; 404 = FAIL, 405 = WARN-ish
-        but treat as PASS (route exists, just rejects empty body),
-        anything 4xx/2xx = PASS.
+        Status semantics:
+          * 404 on a `core` endpoint → FAIL (spec violation)
+          * 404 on an `optional` endpoint → WARN (capability not offered;
+            not non-compliance — a chat-only server is allowed to skip
+            audio/images/embeddings entirely)
+          * 501 on any endpoint → WARN with the server's own error body
+            verbatim. Servers like llama-server return 501 with a
+            self-describing message (e.g. "This server does not support
+            embeddings. Start it with --embeddings"); surfacing that
+            text is more useful than guessing config from a status code.
+          * Anything else 2xx/4xx → PASS (route exists; Phase B decides
+            whether the contract is honored).
         """
         path = ep.path
         # path templating with the most permissive sniffed id (or a
@@ -233,9 +267,11 @@ class Prober:
             return "SKIP", f"http: {e.__class__.__name__}", 0
 
         if r.status_code == 404:
+            if ep.kind == "optional":
+                return "WARN", "404 — capability not offered", 404
             return "FAIL", "404 — endpoint absent", 404
         if r.status_code == 501:
-            return "FAIL", "501 — not implemented", 501
+            return "WARN", f"501 — {_server_error_message(r)}", 501
         return "PASS", f"{r.status_code} (route exists)", r.status_code
 
     # -- phase B ------------------------------------------------------------
@@ -374,10 +410,16 @@ class Prober:
 
     # -- driver -------------------------------------------------------------
 
+    def _endpoints(self) -> list[Endpoint]:
+        if self._endpoints_filter is None:
+            return list(ENDPOINTS)
+        return [e for e in ENDPOINTS if self._endpoints_filter.search(e.path)]
+
     def run(self) -> list[Event]:
+        endpoints = self._endpoints()
         live, why = self._liveness()
         if not live:
-            for ep in ENDPOINTS:
+            for ep in endpoints:
                 self._emit(
                     Event(
                         service=self.name,
@@ -394,7 +436,7 @@ class Prober:
 
         self._sniff_models()
 
-        for ep in ENDPOINTS:
+        for ep in endpoints:
             label = ep.path
             # phase A
             a_status, a_detail, a_code = self._phase_a(ep)
@@ -458,6 +500,11 @@ def _argparser() -> argparse.ArgumentParser:
     p.add_argument("--skip-phase-b", action="store_true", help="existence-only run (Phase A only)")
     p.add_argument("--conn-timeout", type=float, default=4.0)
     p.add_argument("--req-timeout", type=float, default=60.0)
+    p.add_argument(
+        "--endpoints-filter",
+        default="",
+        help="regex; only endpoint paths matching are probed",
+    )
     return p
 
 
@@ -472,6 +519,7 @@ def main(argv: list[str] | None = None) -> int:
         phase_b=not args.skip_phase_b,
         conn_timeout=args.conn_timeout,
         req_timeout=args.req_timeout,
+        endpoints_filter=args.endpoints_filter,
     )
     t0 = time.monotonic()
     events = prober.run()

@@ -64,7 +64,9 @@ def _cmd_probe(args: argparse.Namespace) -> int:
     if args.skip_phase_b:
         forwarded.append("--skip-phase-b")
     if args.timeout is not None:
-        forwarded += ["--timeout", str(args.timeout)]
+        forwarded += ["--req-timeout", str(args.timeout)]
+    if args.endpoints_filter:
+        forwarded += ["--endpoints-filter", args.endpoints_filter]
     return probe.main(forwarded)
 
 
@@ -97,6 +99,11 @@ def build_parser() -> argparse.ArgumentParser:
         help="existence checks only; do not send minimal bodies",
     )
     sp.add_argument("--timeout", type=float, help="per-request timeout in seconds")
+    sp.add_argument(
+        "--endpoints-filter",
+        default="",
+        help="regex applied to endpoint paths; only matching endpoints are probed",
+    )
     sp.set_defaults(func=_cmd_probe)
 
     sg = sub.add_parser("gap", help="compare monolith vs per-service reports")

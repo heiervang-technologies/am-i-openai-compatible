@@ -11,11 +11,16 @@ Each endpoint declares:
                     sniffs from /v1/models)
   method            "GET" / "POST" / "DELETE" …
   group             rough grouping for reporting (chat / audio / …)
-  kind              "core"  → required-by-spec; missing = FAIL
-                    "ext"   → an OpenAI extension (newer / optional);
-                              missing = SKIP
-                    "ours"  → our own extension (e.g. /v1/videos);
-                              missing = SKIP
+  kind              "core"     → required-by-spec for any chat-claiming
+                                 server; missing = FAIL.
+                    "optional" → capability-gated (audio/images/embeddings).
+                                 Missing or 501 = WARN with the server's
+                                 own error body as the hint; misshapen
+                                 response when present = FAIL.
+                    "ext"      → an OpenAI extension (newer / optional);
+                                 missing = SKIP.
+                    "ours"     → our own extension (e.g. /v1/videos);
+                                 missing = SKIP.
   existence_only    if True, never run Phase B (just check 404 vs not)
   body              JSON body for the minimal Phase B call, or None.
                     {model} is substituted from a sniffed id.
@@ -94,10 +99,27 @@ ENDPOINTS: list[Endpoint] = [
             "messages": [{"role": "user", "content": "hi"}],
             "max_tokens": 4,
             "stream": True,
+            "stream_options": {"include_usage": True},
         },
         expects="sse",
         requires_model_kind="chat",
         notes="separate row so a missing-stream regression is visible",
+    ),
+    Endpoint(
+        path="/v1/chat/completions[logprobs]",
+        method="POST",
+        group="chat",
+        kind="ext",
+        body={
+            "model": "{model}",
+            "messages": [{"role": "user", "content": "hi"}],
+            "max_tokens": 4,
+            "logprobs": True,
+            "top_logprobs": 3,
+        },
+        expects=("choices.0.logprobs.content",),
+        requires_model_kind="chat",
+        notes="many servers accept the params but never populate the field",
     ),
     Endpoint(
         path="/v1/completions",
@@ -124,21 +146,23 @@ ENDPOINTS: list[Endpoint] = [
         path="/v1/embeddings",
         method="POST",
         group="embed",
-        kind="core",
+        kind="optional",
         body={"model": "{model}", "input": "hi"},
         expects=("data.0.embedding",),
         requires_model_kind="embed",
+        notes="config-gated: llama-server returns 501 unless --embeddings is set at startup",
     ),
     # --- audio: STT ------------------------------------------------------
     Endpoint(
         path="/v1/audio/transcriptions",
         method="POST",
         group="audio-stt",
-        kind="core",
+        kind="optional",
         multipart=True,
         body={"model": "{model}", "response_format": "json"},
         expects=("text",),
         requires_model_kind="asr",
+        notes="capability-gated: missing on chat-only servers, not non-compliance",
     ),
     Endpoint(
         path="/v1/audio/translations",
@@ -156,10 +180,11 @@ ENDPOINTS: list[Endpoint] = [
         path="/v1/audio/speech",
         method="POST",
         group="audio-tts",
-        kind="core",
+        kind="optional",
         body={"model": "{model}", "input": "hi", "voice": "alloy", "response_format": "wav"},
         expects="audio",
         requires_model_kind="tts",
+        notes="capability-gated: missing on chat-only servers, not non-compliance",
     ),
     Endpoint(
         path="/v1/audio/voices",
@@ -174,7 +199,7 @@ ENDPOINTS: list[Endpoint] = [
         path="/v1/images/generations",
         method="POST",
         group="images",
-        kind="core",
+        kind="optional",
         body={
             "model": "{model}",
             "prompt": "a red dot",
@@ -184,6 +209,7 @@ ENDPOINTS: list[Endpoint] = [
         },
         expects=("data.0",),
         requires_model_kind="image",
+        notes="capability-gated: missing on chat-only servers, not non-compliance",
     ),
     Endpoint(
         path="/v1/images/edits",

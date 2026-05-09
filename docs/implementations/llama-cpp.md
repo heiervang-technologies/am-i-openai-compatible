@@ -14,7 +14,7 @@ matured rapidly through 2025.
 | `/v1/chat/completions` *(stream)* | ✅     | `[DONE]` sentinel, `usage` opt-in                |
 | `/v1/completions`                 | ✅     | Legacy text completion still maintained          |
 | `/v1/responses`                   | ❌     | Not implemented                                  |
-| `/v1/embeddings`                  | ✅     | Requires `--embedding` flag at server start      |
+| `/v1/embeddings`                  | ✅     | Requires `--embeddings` flag at server start (returns 501 otherwise, which the prober reports as WARN) |
 | `/v1/audio/speech`                | ❌     | No TTS in vanilla; out of scope                  |
 | `/v1/audio/transcriptions`        | ❌     | Likewise                                         |
 | `/v1/images/generations`          | ❌     | Out of scope                                     |
