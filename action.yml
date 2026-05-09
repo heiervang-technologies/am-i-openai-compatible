@@ -1,0 +1,141 @@
+name: "am-i-openai-compatible"
+description: "Probe an OpenAI-compatible HTTP server in CI and report per-endpoint pass/warn/fail/skip."
+author: "Heiervang Technologies"
+branding:
+  icon: "check-circle"
+  color: "blue"
+
+inputs:
+  base-url:
+    description: "Root URL of the target server (e.g. http://127.0.0.1:8080)."
+    required: true
+  name:
+    description: "Label for the report. Defaults to the host of base-url."
+    required: false
+    default: ""
+  aioc-version:
+    description: "PyPI version of am-i-openai-compatible to install. 'latest' or a specific version like '0.1.1'."
+    required: false
+    default: "latest"
+  python-version:
+    description: "Python version for the probe runtime."
+    required: false
+    default: "3.12"
+  skip-phase-b:
+    description: "If true, only run Phase A (existence checks). Faster smoke run."
+    required: false
+    default: "false"
+  endpoints-filter:
+    description: "Optional regex applied to endpoint paths. When set, only matching endpoints are probed. Use to skip the audio/image arm in fast-path PR runs."
+    required: false
+    default: ""
+  fail-on:
+    description: "Threshold that fails the action: 'FAIL' (any FAIL row), 'WARN' (any WARN or FAIL), or 'none' (always succeed). Default 'FAIL'."
+    required: false
+    default: "FAIL"
+  report-path:
+    description: "Where to write the JSON report inside the workspace."
+    required: false
+    default: "aioc-report.json"
+  upload-artifact:
+    description: "If true, upload the report as a workflow artifact named 'aioc-report-<name>'."
+    required: false
+    default: "true"
+  step-summary:
+    description: "If true, append a per-endpoint markdown table to GITHUB_STEP_SUMMARY in catalog order."
+    required: false
+    default: "true"
+
+outputs:
+  report-path:
+    description: "Path to the generated JSON report."
+    value: ${{ steps.probe.outputs.report-path }}
+  report-url:
+    description: "URL of the uploaded artifact (empty if upload-artifact is false)."
+    value: ${{ steps.upload.outputs.artifact-url }}
+  pass-count:
+    description: "Number of PASS events."
+    value: ${{ steps.probe.outputs.pass-count }}
+  warn-count:
+    description: "Number of WARN events."
+    value: ${{ steps.probe.outputs.warn-count }}
+  fail-count:
+    description: "Number of FAIL events."
+    value: ${{ steps.probe.outputs.fail-count }}
+  skip-count:
+    description: "Number of SKIP events."
+    value: ${{ steps.probe.outputs.skip-count }}
+
+runs:
+  using: "composite"
+  steps:
+    - name: Set up Python
+      uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065  # v5.6.0
+      with:
+        python-version: ${{ inputs.python-version }}
+
+    - name: Install am-i-openai-compatible
+      shell: bash
+      run: |
+        if [ "${{ inputs.aioc-version }}" = "latest" ]; then
+          python -m pip install --upgrade pip
+          python -m pip install --upgrade am-i-openai-compatible
+        else
+          python -m pip install --upgrade pip
+          python -m pip install "am-i-openai-compatible==${{ inputs.aioc-version }}"
+        fi
+        aioc --help >/dev/null
+
+    - name: Resolve probe label
+      id: label
+      shell: bash
+      env:
+        BASE_URL: ${{ inputs.base-url }}
+        NAME_INPUT: ${{ inputs.name }}
+      run: |
+        if [ -n "$NAME_INPUT" ]; then
+          echo "name=$NAME_INPUT" >>"$GITHUB_OUTPUT"
+        else
+          # Strip scheme, then everything after the first / or :
+          host=$(printf '%s' "$BASE_URL" | sed -E 's#^https?://##; s#[:/].*##')
+          echo "name=${host:-probe}" >>"$GITHUB_OUTPUT"
+        fi
+
+    - name: Run aioc probe
+      id: probe
+      shell: bash
+      env:
+        BASE_URL: ${{ inputs.base-url }}
+        PROBE_NAME: ${{ steps.label.outputs.name }}
+        REPORT_PATH: ${{ inputs.report-path }}
+        SKIP_PHASE_B: ${{ inputs.skip-phase-b }}
+        ENDPOINTS_FILTER: ${{ inputs.endpoints-filter }}
+        FAIL_ON: ${{ inputs.fail-on }}
+        STEP_SUMMARY: ${{ inputs.step-summary }}
+      run: |
+        set -euo pipefail
+        args=(probe "$BASE_URL" --name "$PROBE_NAME" --report "$REPORT_PATH")
+        if [ "$SKIP_PHASE_B" = "true" ]; then
+          args+=(--skip-phase-b)
+        fi
+        if [ -n "$ENDPOINTS_FILTER" ]; then
+          args+=(--endpoints-filter "$ENDPOINTS_FILTER")
+        fi
+        # We never want aioc itself to non-zero-exit here; the action
+        # decides via fail-on after parsing the JSON report. This keeps
+        # the report path and counts available even on failure.
+        aioc "${args[@]}" || true
+        python "$GITHUB_ACTION_PATH/scripts/postprocess.py" \
+          --report "$REPORT_PATH" \
+          --fail-on "$FAIL_ON" \
+          --step-summary "$STEP_SUMMARY"
+
+    - name: Upload report artifact
+      id: upload
+      if: ${{ inputs.upload-artifact == 'true' }}
+      uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02  # v4.6.2
+      with:
+        name: aioc-report-${{ steps.label.outputs.name }}
+        path: ${{ inputs.report-path }}
+        if-no-files-found: error
+        retention-days: 30
