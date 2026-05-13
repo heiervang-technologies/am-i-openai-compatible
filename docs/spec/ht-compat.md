@@ -146,6 +146,19 @@ Content-Type: application/json
 position in the request `documents` array. `usage` is optional but
 SHOULD be included for cost-tracking.
 
+When the request sets `return_documents: true`, each result MUST also
+include the original document under `document.text` (Cohere v2
+convention):
+
+```json
+{"index": 3, "relevance_score": 0.91, "document": {"text": "..."}}
+```
+
+`id` is an implementation-defined string (the `rerank-...` prefix used
+in the example is illustrative, not normative). The same convention
+applies to `seg-...`, `audio-seg-...`, `imgdecomp-...`, and
+`chatcmpl-...` ids throughout this spec.
+
 ---
 
 ### `/v1/segmentations` — promptable image segmentation
@@ -182,8 +195,19 @@ A prompt is one of:
 ```
 
 Coordinates are normalized `[0, 1]`. `label: 1` means foreground,
-`label: 0` means background-exclusion. Multiple prompts in one
-request are interpreted as a single object query (SAM convention).
+`label: 0` means background-exclusion.
+
+> **Deliberate divergence from SAM reference implementations.** The
+> Python SAM/SAM2/SAM3 reference impls use absolute pixel coordinates.
+> HT-compat normalizes to `[0, 1]` so client code stays
+> resolution-independent — clients shouldn't have to ship image
+> dimensions alongside prompts. Servers MUST scale internally.
+
+All prompts in a single request collapse to one object query (SAM
+convention). The response returns `masks` for that single query;
+clients that want multiple independent queries SHOULD make multiple
+requests. Future v1.1 may add a `prompt_index` echo if multi-query
+batching becomes worth supporting.
 
 **Response**
 
@@ -202,9 +226,11 @@ request are interpreted as a single object query (SAM convention).
 }
 ```
 
-If `output_format: "rle"`, `mask` is a COCO-style RLE string instead
-of a PNG. If `output_format: "polygon"`, `mask` is an array of
-`[x, y]` vertices.
+If `output_format: "rle"`, `mask` is a **compressed COCO-RLE string**
+(the `counts` string form, as produced by `pycocotools.mask.encode`;
+not the uncompressed-counts-list variant). If `output_format:
+"polygon"`, `mask` is an array of `[x, y]` vertices in normalized
+`[0, 1]` coordinates.
 
 ---
 
@@ -238,6 +264,10 @@ A prompt is one of:
 {"type": "exemplar", "value": "<base64 reference clip>"}
 ```
 
+All timings in this endpoint (`start_ms`, `end_ms`) use milliseconds,
+matching the convention OpenAI's Realtime API uses for `audio_end_ms`
+etc. Don't mix in seconds.
+
 **Response**
 
 ```json
@@ -247,6 +277,7 @@ A prompt is one of:
   "sources": [
     {
       "audio": "<base64-encoded WAV>",
+      "format": "wav",
       "label": "vocals",
       "score": 0.88,
       "source_id": 0
@@ -255,9 +286,12 @@ A prompt is one of:
 }
 ```
 
-`label` is free-text describing the source (`"vocals"`, `"speech"`,
-`"barking"`, etc.). `sources` is one element by default; multi-output
-models MAY return several.
+`format` MUST echo the container of the returned `audio` bytes
+(matches `response_format` from the request unless transcoding
+failed; never leave a client guessing during demux). `label` is
+free-text describing the source (`"vocals"`, `"speech"`, `"barking"`,
+etc.). `sources` is one element by default; multi-output models MAY
+return several.
 
 ---
 
@@ -300,8 +334,16 @@ Content-part types HT-compat-1.0 accepts (in addition to OpenAI's
 
 | Type | Inner shape |
 |---|---|
-| `input_audio` | `{"data": "<base64>", "format": "wav"\|"mp3"\|"flac"}` |
+| `input_audio` | `{"data": "<base64>", "format": <see below>}` |
 | `input_video` | `{"data": "<base64>", "format": "mp4"\|"webm"}` |
+
+`input_audio.format` accepts `"wav"`, `"mp3"`, `"flac"`, `"ogg"`,
+`"m4a"`. Servers MAY accept additional containers but MUST accept
+those five (matches vLLM-Omni's surface). An unsupported `format`
+MUST return **400** with `error.code: "unsupported_audio_format"`.
+An unsupported `modalities` value (e.g. `"audio"` on a server that
+only does text) MUST return **501** with a self-describing
+`error.message`.
 
 Top-level fields:
 
@@ -309,6 +351,18 @@ Top-level fields:
 |---|---|
 | `modalities` | `["text"]`, `["audio"]`, or `["text", "audio"]`. Default `["text"]`. |
 | `audio` | `{voice, format}` — required when `modalities` includes `"audio"`. |
+
+`audio.voice` is implementation-defined. HT-compat does **not** pin
+the OpenAI voice set (`alloy`, `echo`, `fable`, `onyx`, `nova`,
+`shimmer`) because several reference implementations
+(notably `ht-llama.cpp`'s ref-audio-clone TTS) use arbitrary file
+names instead of a fixed catalog. Clients SHOULD enumerate available
+voices via `/v1/audio/voices` and pass one of the returned ids. A
+server that gets a voice name it doesn't know MUST return **400**
+with `error.code: "unknown_voice"`.
+
+`audio.format` accepts `"wav"`, `"mp3"`, `"flac"`, `"ogg"`, `"m4a"`,
+mirroring the input formats.
 
 **Response**
 
@@ -341,9 +395,26 @@ When `modalities` includes `"audio"`, `choices[0].message.audio` MUST
 be populated. The text transcript SHOULD still appear in
 `choices[0].message.content` for clients that ignore audio.
 
+In HT-compat-1.0, the response `audio.id` is an opaque identifier
+that clients MAY surface for logging but MUST NOT echo back in
+subsequent turns — every audio reference in a follow-up request is a
+full re-`base64` of an `input_audio` content part. Multi-turn
+audio-id reuse (analogous to OpenAI Realtime's `previous_item_id`)
+is reserved for v1.1.
+
+`audio.expires_at` is a Unix timestamp after which the server is no
+longer obligated to retain the audio bytes. Clients that need a
+durable copy MUST persist the bytes locally before then.
+
+**Streaming**
+
 Streaming follows OpenAI's SSE format with one extension: audio
 deltas appear as `delta.audio.data` (base64 chunks) interleaved with
-text deltas. `[DONE]` rules unchanged.
+text deltas. `[DONE]` rules unchanged. In HT-compat-1.0, the framing
+of audio chunks (codec block boundaries vs arbitrary base64 slices)
+is **implementation-defined** — clients MUST concatenate `data`
+across chunks before decoding the container. v1.1 may pin
+codec-aligned framing once a reference impl exists to crib from.
 
 ---
 
@@ -387,7 +458,12 @@ Content-Type: application/json
   "created": 1234567890,
   "model": "qwen-image-layered",
   "data": {
-    "composite": {"b64_json": "<base64 PNG>"},
+    "composite": {
+      "index": -1,
+      "label": "composite",
+      "b64_json": "<base64 PNG>",
+      "bbox": {"x1": 0.0, "y1": 0.0, "x2": 1.0, "y2": 1.0}
+    },
     "layers": [
       {
         "index": 0,
@@ -406,12 +482,20 @@ Content-Type: application/json
 }
 ```
 
-`data.composite` is the flat render (so a client that doesn't care
-about layers gets the same shape as `/v1/images/generations`).
-`data.layers[].b64_json` is RGBA with the alpha channel populated.
+`data.composite` and each entry of `data.layers` share the same
+shape — `{index, label, b64_json, bbox}` — so client code can treat
+them uniformly. `composite.index` is conventionally `-1` and
+`composite.label` is conventionally `"composite"`; layers index from
+`0`. `layers[].b64_json` is RGBA with the alpha channel populated.
+
+`label` is free-text; servers SHOULD use stable labels across
+identical `(prompt, seed)` runs but HT-compat-1.0 does not require
+deterministic labels (the underlying models route through
+segmentation steps that may merge or split layers on tiny prompt
+changes).
 
 If `response_format: "url"`, replace `b64_json` with `url` of equal
-shape.
+shape on both `composite` and `layers[]`.
 
 ---
 
@@ -419,6 +503,8 @@ shape.
 
 The following are model-class gaps the catalog knows about but does
 not pin in v1.0. Sketches here are non-normative.
+
+**New endpoints**
 
 * **`/v1/video/segmentations`** — SAM3-video. Adds `time_ms` to point
   prompts; response is per-frame mask sequence.
@@ -432,6 +518,21 @@ not pin in v1.0. Sketches here are non-normative.
 * **`/v1/3d/generations`** — TRELLIS / Hunyuan3D. Image-to-mesh (GLB).
 * **`/v1/realtime`** — speech-to-speech via WebSocket. Aligns with
   OpenAI's Realtime API once that signature stabilizes.
+
+**Refinements to existing v1.0 endpoints**
+
+* **Per-model capability advertisement.** Each entry in `/v1/models`
+  gains an optional `x_ht_compat` field (e.g. `["reranking", "omni"]`)
+  so clients can pick the right model without trial-and-error.
+* **Omni multi-turn audio reuse.** Allow clients to reference a
+  prior `audio.id` instead of re-`base64`-ing the bytes every turn
+  (cf. OpenAI Realtime's `previous_item_id`).
+* **Omni streaming chunk framing.** Pin codec-aligned framing for
+  `delta.audio.data` once a reference impl exists; v1.0 leaves it
+  implementation-defined.
+* **Segmentation multi-prompt batching.** Add `prompt_index` on
+  masks if multi-prompt-per-request becomes a real need (currently
+  all prompts collapse to one query per SAM convention).
 
 ## How to propose changes
 

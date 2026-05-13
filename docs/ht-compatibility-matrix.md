@@ -37,6 +37,22 @@ matrix above tracks which servers have adopted the canonical shape.
 | `/v1/images/decompositions`     | Qwen-Image-Layered via fal.ai                         |
 | `/v1/videos`                    | OpenAI Sora signature (HT-implemented; no OSS impls yet) |
 
+## Scope per fork
+
+HT-compat is a buffet, not a checklist — most forks will only
+plausibly cover a subset.
+
+| Fork              | Plausible HT-compat surface                                   |
+|-------------------|---------------------------------------------------------------|
+| `ht-llama.cpp`    | `/v1/reranking`. Possibly `[omni]` via proxy to ht-vllm-omni. |
+| `ht-vllm-omni`    | `/v1/chat/completions[omni]`. `/v1/audio/segmentations`?      |
+| `ht-vibe`         | `/v1/audio/segmentations`, future `/v1/audio/separations`.    |
+
+A fork running `aioc probe --profile ht` on a server that only
+implements a subset should set `fail-on: none` (discovery mode); the
+report renders without failing the build. Flip to `fail-on: FAIL`
+once the server has wired up the endpoints it claims.
+
 ## Caveats
 
 * **Wider than typical compat matrix.** HT-compat targets model
