@@ -46,15 +46,31 @@ jobs:
           tail -n 50 server.log
           exit 1
 
-      - uses: heiervang-technologies/am-i-openai-compatible@v0.1.1-pre1
+      - name: aioc probe — OpenAI compat
+        uses: heiervang-technologies/am-i-openai-compatible@v0.2.0-pre1
         with:
           base-url: http://127.0.0.1:8080
           name: llama.cpp-${{ github.sha }}
           fail-on: FAIL
           # Pin the Python package to the same git ref so the action and
-          # the catalog/probe code move together until 0.1.1 lands on PyPI.
-          # After that, drop this line to take the latest published catalog.
-          aioc-version: "git+https://github.com/heiervang-technologies/am-i-openai-compatible.git@v0.1.1-pre1"
+          # the catalog/probe code move together until the release lands
+          # on PyPI. After that, drop this line to take the latest
+          # published catalog.
+          aioc-version: "git+https://github.com/heiervang-technologies/am-i-openai-compatible.git@v0.2.0-pre1"
+
+      - name: aioc probe — HT compat
+        # Same server, ht-extension catalog. Forks that haven't adopted
+        # HT-compat yet should set fail-on: WARN so missing extensions
+        # surface in the step summary without blocking the build. Flip
+        # to FAIL once the fork ships its first HT endpoint.
+        uses: heiervang-technologies/am-i-openai-compatible@v0.2.0-pre1
+        with:
+          base-url: http://127.0.0.1:8080
+          name: llama.cpp-${{ github.sha }}-ht
+          profile: ht
+          fail-on: WARN
+          report-path: aioc-report-ht.json
+          aioc-version: "git+https://github.com/heiervang-technologies/am-i-openai-compatible.git@v0.2.0-pre1"
 
       - name: Stop llama-server
         if: always()

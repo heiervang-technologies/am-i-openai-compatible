@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "am-i-openai-compatible"
-version = "0.1.1"
+version = "0.2.0"
 description = "Probe any HTTP server for OpenAI API compliance, with documented deviations across the OSS implementations."
 readme = "README.md"
 license = "MIT"

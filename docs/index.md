@@ -24,6 +24,7 @@ This site is two things at once:
 
 [Get started](getting-started.md){ .md-button .md-button--primary }
 [See the matrix](compatibility-matrix.md){ .md-button }
+[HT-compat extensions](spec/ht-compat.md){ .md-button }
 
 ## Why a separate spec?
 
@@ -43,9 +44,13 @@ don't describe:
 
 The catalog in
 [`endpoints.py`](https://github.com/heiervang-technologies/am-i-openai-compatible/blob/main/src/am_i_openai_compatible/endpoints.py)
-is the source of truth. Each entry is tagged `core`, `ext`, or `ours`,
-so a server that lacks a `core` endpoint is a hard fail and one that
-lacks an `ext` is a documented absence.
+is the source of truth. Each entry is tagged `core`, `optional`,
+`ext`, or `ours`, so a server that lacks a `core` endpoint is a hard
+fail and one that lacks an `ext` is a documented absence. The `ours`
+rows belong to the [HT-compat profile](spec/ht-compat.md) — an
+opinionated extension covering model classes (segmentation, omni
+chat, reranking, layered image gen) that OpenAI doesn't yet have
+endpoints for.
 
 ## Headline claims
 

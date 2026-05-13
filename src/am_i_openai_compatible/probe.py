@@ -77,8 +77,9 @@ class Event:
     detail: str
     method: str = ""
     http_status: int = 0
-    kind: str = ""  # core / ext / ours
+    kind: str = ""  # core / optional / ext / ours
     group: str = ""
+    profile: str = "openai"  # which probe profile this event was recorded under
 
 
 # ---------------------------------------------------------------------------
@@ -137,7 +138,10 @@ def _classify_kind(model_id: str) -> set[str]:
     """
     s = model_id.lower()
     kinds: set[str] = set()
-    if any(k in s for k in ("embed", "embedding", "bge", "e5", "gte")):
+    is_rerank = any(k in s for k in ("rerank", "reranker"))
+    if is_rerank:
+        kinds.add("rerank")
+    if any(k in s for k in ("embed", "embedding", "e5", "gte")) or ("bge" in s and not is_rerank):
         kinds.add("embed")
     if any(k in s for k in ("whisper", "asr")):
         kinds.add("asr")
@@ -147,8 +151,16 @@ def _classify_kind(model_id: str) -> set[str]:
         kinds.add("image")
     if "edit" in s or "kontext" in s:
         kinds.add("image-edit")
+    if "layered" in s or "decompose" in s:
+        kinds.add("image-decompose")
     if any(k in s for k in ("video", "wan", "ltx", "cogvideo", "sora")):
         kinds.add("video")
+    if "sam-audio" in s or "audio-sam" in s:
+        kinds.add("audio-segment")
+    if "sam" in s and "audio" not in s:
+        kinds.add("segment")
+    if "omni" in s or "minicpm-o" in s:
+        kinds.add("omni")
     if not kinds:
         kinds.add("chat")
     return kinds
@@ -157,6 +169,13 @@ def _classify_kind(model_id: str) -> set[str]:
 # ---------------------------------------------------------------------------
 # Prober
 # ---------------------------------------------------------------------------
+
+
+PROFILE_KINDS: dict[str, frozenset[str]] = {
+    "openai": frozenset({"core", "optional", "ext"}),
+    "ht": frozenset({"core", "optional", "ext", "ours"}),
+    "all": frozenset({"core", "optional", "ext", "ours"}),
+}
 
 
 class Prober:
@@ -170,10 +189,14 @@ class Prober:
         req_timeout: float = 60.0,
         http2: bool = False,
         endpoints_filter: str = "",
+        profile: str = "openai",
     ):
+        if profile not in PROFILE_KINDS:
+            raise ValueError(f"unknown profile {profile!r}; choose from {sorted(PROFILE_KINDS)}")
         self.base = base_url.rstrip("/")
         self.name = name
         self.phase_b = phase_b
+        self.profile = profile
         self.conn_timeout = conn_timeout
         self.req_timeout = req_timeout
         self.client = httpx.Client(
@@ -269,6 +292,10 @@ class Prober:
         if r.status_code == 404:
             if ep.kind == "optional":
                 return "WARN", "404 — capability not offered", 404
+            # `ours` rows are only probed under --profile ht (filtered out
+            # otherwise), so a 404 here means the server claims HT-compat
+            # but is missing a required endpoint — grade as FAIL, same
+            # as a missing `core` endpoint.
             return "FAIL", "404 — endpoint absent", 404
         if r.status_code == 501:
             return "WARN", f"501 — {_server_error_message(r)}", 501
@@ -388,12 +415,14 @@ class Prober:
 
     def _multipart_payload(self, ep: Endpoint, body: dict) -> tuple[dict, dict]:
         files = {}
-        if ep.group == "audio-stt":
+        if ep.group in ("audio-stt", "audio-segment"):
             files["file"] = ("probe.wav", _silent_wav(), "audio/wav")
         elif ep.group == "images":
             files["image"] = ("probe.png", _tiny_png(), "image/png")
             if "edits" in ep.path:
                 files["mask"] = ("mask.png", _tiny_png(), "image/png")
+        elif ep.group == "segment":
+            files["image"] = ("probe.png", _tiny_png(), "image/png")
         return files, body
 
     def _validate_shape(self, ep: Endpoint, body: Any, http_status: int) -> tuple[str, str, int]:
@@ -411,9 +440,11 @@ class Prober:
     # -- driver -------------------------------------------------------------
 
     def _endpoints(self) -> list[Endpoint]:
-        if self._endpoints_filter is None:
-            return list(ENDPOINTS)
-        return [e for e in ENDPOINTS if self._endpoints_filter.search(e.path)]
+        allowed = PROFILE_KINDS[self.profile]
+        eps = [e for e in ENDPOINTS if e.kind in allowed]
+        if self._endpoints_filter is not None:
+            eps = [e for e in eps if self._endpoints_filter.search(e.path)]
+        return eps
 
     def run(self) -> list[Event]:
         endpoints = self._endpoints()
@@ -430,6 +461,7 @@ class Prober:
                         method=ep.method,
                         kind=ep.kind,
                         group=ep.group,
+                        profile=self.profile,
                     )
                 )
             return self.events
@@ -451,6 +483,7 @@ class Prober:
                     http_status=a_code,
                     kind=ep.kind,
                     group=ep.group,
+                    profile=self.profile,
                 )
             )
 
@@ -473,6 +506,7 @@ class Prober:
                     http_status=b_code,
                     kind=ep.kind,
                     group=ep.group,
+                    profile=self.profile,
                 )
             )
 
@@ -505,6 +539,15 @@ def _argparser() -> argparse.ArgumentParser:
         default="",
         help="regex; only endpoint paths matching are probed",
     )
+    p.add_argument(
+        "--profile",
+        choices=sorted(PROFILE_KINDS),
+        default="openai",
+        help=(
+            "which catalog rows to probe: 'openai' (core/optional/ext; default), "
+            "'ht' (adds HT-compat 'ours' rows and FAILs on 404), or 'all' (alias for ht)"
+        ),
+    )
     return p
 
 
@@ -520,6 +563,7 @@ def main(argv: list[str] | None = None) -> int:
         conn_timeout=args.conn_timeout,
         req_timeout=args.req_timeout,
         endpoints_filter=args.endpoints_filter,
+        profile=args.profile,
     )
     t0 = time.monotonic()
     events = prober.run()

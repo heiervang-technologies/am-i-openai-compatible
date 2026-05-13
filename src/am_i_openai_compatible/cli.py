@@ -67,6 +67,8 @@ def _cmd_probe(args: argparse.Namespace) -> int:
         forwarded += ["--req-timeout", str(args.timeout)]
     if args.endpoints_filter:
         forwarded += ["--endpoints-filter", args.endpoints_filter]
+    if args.profile != "openai":
+        forwarded += ["--profile", args.profile]
     return probe.main(forwarded)
 
 
@@ -103,6 +105,16 @@ def build_parser() -> argparse.ArgumentParser:
         "--endpoints-filter",
         default="",
         help="regex applied to endpoint paths; only matching endpoints are probed",
+    )
+    sp.add_argument(
+        "--profile",
+        choices=("openai", "ht", "all"),
+        default="openai",
+        help=(
+            "which catalog rows to probe: 'openai' (default), "
+            "'ht' (adds HT-compat extensions; see docs/spec/ht-compat.md), "
+            "or 'all' (alias for ht)"
+        ),
     )
     sp.set_defaults(func=_cmd_probe)
 

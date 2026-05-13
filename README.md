@@ -22,6 +22,12 @@ This project gives you two things:
    *real* OpenAI surface and an honest matrix of how the major OSS
    servers compare. PRs welcome when behavior changes.
 
+It also ships an opinionated **HT-compat profile** —
+`aioc probe URL --profile ht` — that adds endpoints for model classes
+OpenAI doesn't pin yet (promptable segmentation à la SAM3, omni-modal
+chat, reranking, layered image generation, audio extraction).
+See [`docs/spec/ht-compat.md`](docs/spec/ht-compat.md).
+
 ## Quickstart
 
 ```bash

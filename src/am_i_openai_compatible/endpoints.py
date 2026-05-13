@@ -19,8 +19,13 @@ Each endpoint declares:
                                  response when present = FAIL.
                     "ext"      → an OpenAI extension (newer / optional);
                                  missing = SKIP.
-                    "ours"     → our own extension (e.g. /v1/videos);
-                                 missing = SKIP.
+                    "ours"     → an HT-compat extension (docs/spec/ht-compat.md).
+                                 Profile-dependent: skipped entirely under
+                                 the default `openai` profile; under
+                                 `--profile ht` these rows are probed and
+                                 a 404 is graded as FAIL (the server
+                                 claims HT-compat but is missing a
+                                 required endpoint).
   existence_only    if True, never run Phase B (just check 404 vs not)
   body              JSON body for the minimal Phase B call, or None.
                     {model} is substituted from a sniffed id.
@@ -274,7 +279,10 @@ ENDPOINTS: list[Endpoint] = [
         expects=(),
         notes="newer OpenAI multipart uploads; existence-only check",
     ),
-    # --- our extensions --------------------------------------------------
+    # --- HT-compat extensions (docs/spec/ht-compat.md) -------------------
+    # These rows are probed only under `--profile ht`. A 404 there is a
+    # FAIL: the server claims HT-compat but is missing a required
+    # endpoint.
     Endpoint(
         path="/v1/videos",
         method="POST",
@@ -283,7 +291,88 @@ ENDPOINTS: list[Endpoint] = [
         body={"model": "{model}", "prompt": "a slow zoom on a red dot", "seconds": 1},
         expects=("id", "status"),
         requires_model_kind="video",
-        notes="our /v1/videos extension (Sora-style)",
+        notes="HT-compat: Sora-style video job submission",
+    ),
+    Endpoint(
+        path="/v1/reranking",
+        method="POST",
+        group="rerank",
+        kind="ours",
+        body={
+            "model": "{model}",
+            "query": "what is OpenAI compatibility",
+            "documents": ["a relevant document", "an unrelated document"],
+        },
+        expects=("results.0.index", "results.0.relevance_score"),
+        requires_model_kind="rerank",
+        notes="HT-compat: Cohere/Jina rerank convention",
+    ),
+    Endpoint(
+        path="/v1/segmentations",
+        method="POST",
+        group="segment",
+        kind="ours",
+        multipart=True,
+        body={
+            "model": "{model}",
+            "prompts": '[{"type":"point","x":0.5,"y":0.5,"label":1}]',
+        },
+        expects=("masks.0.mask",),
+        requires_model_kind="segment",
+        notes="HT-compat: SAM3-style promptable image segmentation",
+    ),
+    Endpoint(
+        path="/v1/audio/segmentations",
+        method="POST",
+        group="audio-segment",
+        kind="ours",
+        multipart=True,
+        body={
+            "model": "{model}",
+            "prompt": '{"type":"text","value":"vocals"}',
+        },
+        expects=("sources.0.audio",),
+        requires_model_kind="audio-segment",
+        notes="HT-compat: SAM-Audio-style promptable audio extraction",
+    ),
+    Endpoint(
+        path="/v1/chat/completions[omni]",
+        method="POST",
+        group="chat",
+        kind="ours",
+        body={
+            "model": "{model}",
+            "modalities": ["text", "audio"],
+            "messages": [
+                {
+                    "role": "user",
+                    "content": [
+                        {"type": "text", "text": "hi"},
+                    ],
+                }
+            ],
+            "audio": {"voice": "alloy", "format": "wav"},
+            "max_tokens": 4,
+        },
+        expects=("choices.0.message.audio.data",),
+        requires_model_kind="omni",
+        notes="HT-compat: vLLM-Omni-style multi-modal in/out via modalities field",
+    ),
+    Endpoint(
+        path="/v1/images/decompositions",
+        method="POST",
+        group="images",
+        kind="ours",
+        body={
+            "model": "{model}",
+            "prompt": "a red dot",
+            "num_layers": 2,
+            "size": "256x256",
+            "response_format": "b64_json",
+        },
+        expects=("data.layers.0.b64_json",),
+        requires_model_kind="image-decompose",
+        notes="HT-compat: Qwen-Image-Layered-style RGBA layer decomposition",
     ),
 ]
 
