@@ -46,11 +46,15 @@ jobs:
           tail -n 50 server.log
           exit 1
 
-      - uses: heiervang-technologies/am-i-openai-compatible@v1
+      - uses: heiervang-technologies/am-i-openai-compatible@v0.1.1-pre1
         with:
           base-url: http://127.0.0.1:8080
           name: llama.cpp-${{ github.sha }}
           fail-on: FAIL
+          # Pin the Python package to the same git ref so the action and
+          # the catalog/probe code move together until 0.1.1 lands on PyPI.
+          # After that, drop this line to take the latest published catalog.
+          aioc-version: "git+https://github.com/heiervang-technologies/am-i-openai-compatible.git@v0.1.1-pre1"
 
       - name: Stop llama-server
         if: always()

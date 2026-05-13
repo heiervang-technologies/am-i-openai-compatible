@@ -14,7 +14,7 @@ inputs:
     required: false
     default: ""
   aioc-version:
-    description: "PyPI version of am-i-openai-compatible to install. 'latest' or a specific version like '0.1.1'."
+    description: "Version of am-i-openai-compatible to install. 'latest' (PyPI), a specific PyPI version like '0.1.1', or a pip-installable spec starting with 'git+' (e.g. 'git+https://github.com/heiervang-technologies/am-i-openai-compatible.git@v0.1.1-pre1') to pin against a tag before a PyPI release."
     required: false
     default: "latest"
   python-version:
@@ -76,14 +76,22 @@ runs:
 
     - name: Install am-i-openai-compatible
       shell: bash
+      env:
+        AIOC_VERSION: ${{ inputs.aioc-version }}
       run: |
-        if [ "${{ inputs.aioc-version }}" = "latest" ]; then
-          python -m pip install --upgrade pip
-          python -m pip install --upgrade am-i-openai-compatible
-        else
-          python -m pip install --upgrade pip
-          python -m pip install "am-i-openai-compatible==${{ inputs.aioc-version }}"
-        fi
+        python -m pip install --upgrade pip
+        case "$AIOC_VERSION" in
+          latest)
+            python -m pip install --upgrade am-i-openai-compatible
+            ;;
+          git+*)
+            # Pre-release / development pin: pip-installable git spec.
+            python -m pip install "$AIOC_VERSION"
+            ;;
+          *)
+            python -m pip install "am-i-openai-compatible==$AIOC_VERSION"
+            ;;
+        esac
         aioc --help >/dev/null
 
     - name: Resolve probe label
