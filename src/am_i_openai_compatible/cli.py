@@ -69,6 +69,8 @@ def _cmd_probe(args: argparse.Namespace) -> int:
         forwarded += ["--endpoints-filter", args.endpoints_filter]
     if args.profile != "openai":
         forwarded += ["--profile", args.profile]
+    if args.model:
+        forwarded += ["--model", args.model]
     return probe.main(forwarded)
 
 
@@ -113,6 +115,15 @@ def build_parser() -> argparse.ArgumentParser:
         help=(
             "which catalog rows to probe: 'openai' (default) "
             "or 'ht' (adds HT-compat extensions; see docs/spec/ht-compat.md)"
+        ),
+    )
+    sp.add_argument(
+        "--model",
+        default=None,
+        help=(
+            "pin a specific model id for Phase B bodies (e.g. 'borealis-4b'); "
+            "overrides the default first-listed-model selection. Useful for "
+            "router-mode servers where /v1/models[0] is arbitrary."
         ),
     )
     sp.set_defaults(func=_cmd_probe)

@@ -33,6 +33,10 @@ inputs:
     description: "Which catalog rows to probe: 'openai' (default; core/optional/ext) or 'ht' (adds HT-compat extensions per docs/spec/ht-compat.md and FAILs on 404 there)."
     required: false
     default: "openai"
+  model:
+    description: "Pin a specific model id for Phase B bodies (e.g. 'borealis-4b'). Default behavior picks the first model from /v1/models, which is arbitrary on router-mode servers. Falls back to kind-based selection for endpoints whose required kind the override can't serve."
+    required: false
+    default: ""
   fail-on:
     description: "Threshold that fails the action: 'FAIL' (any FAIL row), 'WARN' (any WARN or FAIL), or 'none' (always succeed). Default 'FAIL'."
     required: false
@@ -123,6 +127,7 @@ runs:
         SKIP_PHASE_B: ${{ inputs.skip-phase-b }}
         ENDPOINTS_FILTER: ${{ inputs.endpoints-filter }}
         PROFILE: ${{ inputs.profile }}
+        MODEL: ${{ inputs.model }}
         FAIL_ON: ${{ inputs.fail-on }}
         STEP_SUMMARY: ${{ inputs.step-summary }}
       run: |
@@ -136,6 +141,9 @@ runs:
         fi
         if [ "$PROFILE" != "openai" ]; then
           args+=(--profile "$PROFILE")
+        fi
+        if [ -n "$MODEL" ]; then
+          args+=(--model "$MODEL")
         fi
         # We never want aioc itself to non-zero-exit here; the action
         # decides via fail-on after parsing the JSON report. This keeps
