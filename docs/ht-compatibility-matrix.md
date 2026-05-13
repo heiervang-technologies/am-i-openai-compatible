@@ -15,7 +15,7 @@ Legend: ✅ pass · ⚠️ pass-with-deviation · ❌ not implemented · — out
 
 | Endpoint                            | ht-llama.cpp | vLLM omni | vanilla llama.cpp | OpenAI |
 |-------------------------------------|--------------|-----------|-------------------|--------|
-| `/v1/reranking`                     | ❌            | ⚠️         | ❌                 | —      |
+| `/v1/reranking`                     | ⚠️            | ⚠️         | ⚠️                 | —      |
 | `/v1/segmentations`                 | ❌            | ❌         | ❌                 | —      |
 | `/v1/audio/segmentations`           | ❌            | ❌         | ❌                 | —      |
 | `/v1/chat/completions` *(omni)*     | ❌            | ✅         | ❌                 | —      |
@@ -63,3 +63,11 @@ once the server has wired up the endpoints it claims.
   gaps; if OpenAI ships a `/v1/segmentations` we'll re-evaluate.
 * **`⚠️` for vLLM rerank** because vLLM's rerank endpoint is
   Cohere-compatible (no `/v1/` prefix); the response shape matches.
+* **`⚠️` for llama.cpp rerank** (both forks) because `llama-server`
+  ships the `/v1/reranking` route from upstream and, when booted
+  *without* `--reranking`, returns 501 with the canonical OpenAI
+  error envelope — the HT-compat-1.0 capability-gating contract. A
+  server booted with `--reranking` and a rerank-class model would
+  flip to ✅; first probe report against that config is welcome.
+  Confirmed via aioc probe report from ht-llama.cpp PR #39 (run
+  25821142550 against `feat/ci-aioc-compat-probe` on origin/ht).

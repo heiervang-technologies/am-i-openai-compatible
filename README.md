@@ -36,6 +36,11 @@ pip install am-i-openai-compatible
 aioc probe http://localhost:8080 --name llama.cpp
 aioc probe https://api.openai.com --name openai
 aioc gap --monolith probe-llama.json --cluster probe-openai.json
+
+# Probe HT-compat extensions (reranking, SAM3 segmentations,
+# omni chat, layered images, audio-SAM extraction) alongside
+# the OpenAI surface:
+aioc probe http://localhost:8080 --profile ht --name llama.cpp-ht
 ```
 
 Output is a per-endpoint pass / warn / fail / skip table:
