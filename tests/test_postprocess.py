@@ -165,3 +165,124 @@ def test_summary_picks_most_informative_event_per_endpoint(tmp_path, monkeypatch
     ]
     assert any("FAIL" in line for line in chat_lines)
     assert not any("PASS" in line for line in chat_lines)
+
+
+# ---------------------------------------------------------------------------
+# Profile + section-split rendering (HT-compat v0.2)
+# ---------------------------------------------------------------------------
+
+
+def test_summary_splits_openai_and_ht_sections(tmp_path, monkeypatch):
+    """Under --profile ht, the step summary must render two sections:
+    one for the OpenAI catalog (kind != 'ours') and one for the HT
+    extensions (kind == 'ours'). Otherwise a reader can't tell at a
+    glance which surface is failing.
+    """
+    pp = _load_postprocess()
+    report = _write_report(
+        tmp_path,
+        [
+            _make_event("/v1/models", "A", "PASS", detail="200 (route exists)", kind="core"),
+            _make_event(
+                "/v1/reranking",
+                "A",
+                "WARN",
+                detail="501 — Start it with --reranking",
+                kind="ours",
+            ),
+            _make_event(
+                "/v1/segmentations",
+                "A",
+                "FAIL",
+                detail="404 — endpoint absent",
+                kind="ours",
+            ),
+        ],
+    )
+    monkeypatch.setenv("GITHUB_OUTPUT", str(tmp_path / "output"))
+    summary_file = tmp_path / "summary"
+    monkeypatch.setenv("GITHUB_STEP_SUMMARY", str(summary_file))
+
+    pp.main(["--report", str(report), "--fail-on", "none", "--step-summary", "true"])
+
+    summary = summary_file.read_text()
+    assert "### OpenAI compat" in summary
+    assert "### HT compat" in summary
+    # OpenAI section comes first (catalog order).
+    assert summary.index("### OpenAI compat") < summary.index("### HT compat")
+    # /v1/models lives in OpenAI section, /v1/reranking + /v1/segmentations in HT.
+    openai_block, ht_block = summary.split("### HT compat", 1)
+    assert "/v1/models" in openai_block
+    assert "/v1/models" not in ht_block
+    assert "/v1/reranking" in ht_block
+    assert "/v1/segmentations" in ht_block
+    assert "/v1/reranking" not in openai_block
+
+
+def test_summary_header_advertises_non_default_profile(tmp_path, monkeypatch):
+    """When events carry profile='ht', the header should call it out
+    so a reader doesn't mistake an HT-FAIL for an OpenAI-FAIL.
+    """
+    pp = _load_postprocess()
+    report = _write_report(
+        tmp_path,
+        [
+            {
+                **_make_event("/v1/reranking", "A", "WARN", kind="ours"),
+                "profile": "ht",
+            },
+        ],
+    )
+    monkeypatch.setenv("GITHUB_OUTPUT", str(tmp_path / "output"))
+    summary_file = tmp_path / "summary"
+    monkeypatch.setenv("GITHUB_STEP_SUMMARY", str(summary_file))
+
+    pp.main(["--report", str(report), "--fail-on", "none", "--step-summary", "true"])
+
+    summary = summary_file.read_text()
+    assert "profile `ht`" in summary
+
+
+def test_summary_omits_profile_in_header_for_default_openai(tmp_path, monkeypatch):
+    """The default openai profile is the common case; cluttering the
+    header with `profile openai` adds noise. Header stays terse.
+    """
+    pp = _load_postprocess()
+    report = _write_report(
+        tmp_path,
+        [
+            {
+                **_make_event("/v1/models", "A", "PASS", kind="core"),
+                "profile": "openai",
+            },
+        ],
+    )
+    monkeypatch.setenv("GITHUB_OUTPUT", str(tmp_path / "output"))
+    summary_file = tmp_path / "summary"
+    monkeypatch.setenv("GITHUB_STEP_SUMMARY", str(summary_file))
+
+    pp.main(["--report", str(report), "--fail-on", "none", "--step-summary", "true"])
+
+    summary = summary_file.read_text()
+    assert "profile" not in summary.split("\n", 2)[0]
+
+
+def test_summary_omits_empty_ht_section(tmp_path, monkeypatch):
+    """When the report has no kind=ours rows (e.g. default openai
+    profile run), the HT compat section should not render — empty
+    tables would be confusing noise.
+    """
+    pp = _load_postprocess()
+    report = _write_report(
+        tmp_path,
+        [_make_event("/v1/models", "A", "PASS", kind="core")],
+    )
+    monkeypatch.setenv("GITHUB_OUTPUT", str(tmp_path / "output"))
+    summary_file = tmp_path / "summary"
+    monkeypatch.setenv("GITHUB_STEP_SUMMARY", str(summary_file))
+
+    pp.main(["--report", str(report), "--fail-on", "none", "--step-summary", "true"])
+
+    summary = summary_file.read_text()
+    assert "### OpenAI compat" in summary
+    assert "### HT compat" not in summary
