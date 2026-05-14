@@ -381,6 +381,21 @@ ENDPOINTS: list[Endpoint] = [
         requires_model_kind="image-decompose",
         notes="HT-compat: Qwen-Image-Layered-style RGBA layer decomposition",
     ),
+    Endpoint(
+        path="/v1/3d/generations",
+        method="POST",
+        group="3d",
+        kind="ours",
+        body={
+            "model": "{model}",
+            "prompt": "a small red cube",
+            "output_format": "glb",
+            "n": 1,
+        },
+        expects=("id", "status"),
+        requires_model_kind="3d",
+        notes="HT-compat: TRELLIS/Hunyuan3D-style async 3D mesh generation (ComfyUI backend)",
+    ),
 ]
 
 

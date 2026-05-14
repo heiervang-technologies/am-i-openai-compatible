@@ -20,6 +20,7 @@ Legend: ✅ pass · ⚠️ pass-with-deviation · ❌ not implemented · — out
 | `/v1/audio/segmentations`           | ❌            | ❌         | ❌                 | —      |
 | `/v1/chat/completions` *(omni)*     | ❌            | ✅         | ❌                 | —      |
 | `/v1/images/decompositions`         | ❌            | ❌         | ❌                 | —      |
+| `/v1/3d/generations`                | ❌            | ❌         | ❌                 | —      |
 | `/v1/videos`                        | ❌            | ❌         | ❌                 | —      |
 
 ## Reference implementations
@@ -35,6 +36,7 @@ matrix above tracks which servers have adopted the canonical shape.
 | `/v1/audio/segmentations`       | Meta SAM-Audio (paper + reference Python)             |
 | `/v1/chat/completions[omni]`    | vLLM-Omni serving Qwen2.5-Omni                        |
 | `/v1/images/decompositions`     | Qwen-Image-Layered via fal.ai                         |
+| `/v1/3d/generations`            | TRELLIS-2 + Hunyuan3D via ComfyUI workflow shim       |
 | `/v1/videos`                    | OpenAI Sora signature (HT-implemented; no OSS impls yet) |
 
 ## Scope per fork

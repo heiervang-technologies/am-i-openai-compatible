@@ -155,6 +155,8 @@ def _classify_kind(model_id: str) -> set[str]:
         kinds.add("image-decompose")
     if any(k in s for k in ("video", "wan", "ltx", "cogvideo", "sora")):
         kinds.add("video")
+    if any(k in s for k in ("trellis", "hunyuan3d", "instantmesh")):
+        kinds.add("3d")
     if "sam-audio" in s or "audio-sam" in s:
         kinds.add("audio-segment")
     if "sam" in s and "audio" not in s:

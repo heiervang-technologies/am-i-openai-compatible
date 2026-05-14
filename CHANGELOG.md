@@ -17,6 +17,13 @@ versions follow [SemVer](https://semver.org/).
   downgrade real server bugs.
 - `model` input added to `action.yml`; forwards as `--model` to the
   CLI.
+- **`/v1/3d/generations`** promoted from v1.1-deferred to a full
+  HT-compat-1.0 endpoint: async job submission for TRELLIS-2 /
+  Hunyuan3D / InstantMesh, mirroring `/v1/videos`. Reference backend
+  is ComfyUI via the 3D node packs. New catalog row (`kind="ours"`,
+  `requires_model_kind="3d"`), `_classify_kind` learns `trellis` /
+  `hunyuan3d` / `instantmesh` patterns, respx Phase B test, matrix
+  row.
 
 Holds release pending v0.2.0 PR merge.
 
