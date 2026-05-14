@@ -466,10 +466,21 @@ without either MUST return **400** with
 `error.code: "missing_input"`. Unsupported `output_format` returns
 **400** with `error.code: "unsupported_output_format"`.
 
-`image_url` accepts either an `http(s)://...` URL the server can
-fetch, or an inline `data:image/<format>;base64,<bytes>` URI.
-Clients SHOULD prefer data URIs for small images and absolute URLs
-for large ones; servers MUST accept both.
+`image_url` accepts inline `data:image/<format>;base64,<bytes>` URIs
+**(MUST)** and `http(s)://...` URLs the server can fetch **(MAY)**.
+
+Servers that opt into http(s) URL fetching MUST validate the URL
+against an egress-hardening policy (no private/link-local/loopback
+ranges, no metadata endpoints, etc.) per OWASP SSRF guidance —
+fetching arbitrary attacker-controlled URLs is a real cross-tenant
+risk in shared deployments. Servers without that hardening SHOULD
+reject http(s) URLs with **400** and `error.code:
+"unsupported_image_url_scheme"` and document data-URI-only support
+in their `/v1/models` notes.
+
+Clients targeting v1.0 portability SHOULD send data URIs — every
+HT-compat-1.0 server accepts them; http(s) URL fetching is a server
+opt-in.
 
 **v1.0 caveat — text-to-3D is implementation-optional.** Hunyuan3D-2,
 TRELLIS-2, and InstantMesh are all image-to-3D models; text-only

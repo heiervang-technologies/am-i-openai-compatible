@@ -21,7 +21,7 @@ Legend: ✅ pass · ⚠️ pass-with-deviation · ❌ not implemented · — out
 | `/v1/chat/completions` *(omni)*     | ❌            | ✅         | ❌                 | ❌                  | —      |
 | `/v1/images/decompositions`         | ❌            | ❌         | ❌                 | ❌                  | —      |
 | `/v1/3d/generations`                | ❌            | ❌         | ❌                 | **✅**              | —      |
-| `/v1/videos`                        | ❌            | ❌         | ❌                 | ⚠️                  | —      |
+| `/v1/videos`                        | ❌            | ❌         | ❌                 | **✅**              | —      |
 
 ## Reference implementations
 
@@ -70,9 +70,10 @@ once the server has wired up the endpoints it claims.
   ComfyUI workflow shim; verified end-to-end with `aioc probe
   http://192.168.8.170:30385 --profile ht` (Phase A + Phase B both
   PASS). HTTP 202 on submission, GLB returned via `/v1/3d/generations/{id}/content`.
-* **`⚠️` for titan-comfy-openai videos** — server returns 400
-  requiring field name `image` rather than the spec's `image_url`.
-  Tracking the impl-side alignment; not blocking matrix entry.
+* **`✅` for titan-comfy-openai videos** — flipped from ⚠️ after
+  comfy-openai v5 added Pydantic `image_url` alias on the videos
+  handler (legacy `image` still accepted). Verified with `aioc probe
+  --profile ht` against ltx-2.3.
 * **`⚠️` for llama.cpp rerank** (both forks) because `llama-server`
   ships the `/v1/reranking` route from upstream and, when booted
   *without* `--reranking`, returns 501 with the canonical OpenAI
