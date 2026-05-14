@@ -288,10 +288,18 @@ ENDPOINTS: list[Endpoint] = [
         method="POST",
         group="video",
         kind="ours",
-        body={"model": "{model}", "prompt": "a slow zoom on a red dot", "seconds": 1},
+        body={
+            "model": "{model}",
+            "prompt": "a slow zoom on a red dot",
+            "image_url": (
+                "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAA"
+                "AAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII="
+            ),
+            "seconds": 1,
+        },
         expects=("id", "status"),
         requires_model_kind="video",
-        notes="HT-compat: Sora-style video job submission",
+        notes="HT-compat: Sora-style video job submission (image_url tolerated; image-to-video models like LTX require it)",
     ),
     Endpoint(
         path="/v1/reranking",
@@ -388,13 +396,17 @@ ENDPOINTS: list[Endpoint] = [
         kind="ours",
         body={
             "model": "{model}",
+            "image_url": (
+                "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAA"
+                "AAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII="
+            ),
             "prompt": "a small red cube",
             "output_format": "glb",
             "n": 1,
         },
         expects=("id", "status"),
         requires_model_kind="3d",
-        notes="HT-compat: TRELLIS/Hunyuan3D-style async 3D mesh generation (ComfyUI backend)",
+        notes="HT-compat: TRELLIS/Hunyuan3D-style async 3D mesh generation (ComfyUI backend; image_url required, text-to-3D is v1.1)",
     ),
 ]
 

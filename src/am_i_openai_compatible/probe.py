@@ -389,8 +389,10 @@ class Prober:
             # bytes are spec-correct, but right-now-not-available. WARN
             # mirrors how Phase A grades 501.
             return "WARN", f"503 — {_server_error_message(r)}", 503
-        if r.status_code != 200:
+        if not (200 <= r.status_code < 300):
             return "FAIL", f"POST → {r.status_code}: {r.text[:120]}", r.status_code
+        # 2xx — including 202 Accepted for async job submission. Shape
+        # validation below handles whether the envelope is correct.
 
         # Audio/image responses are non-JSON.
         if ep.expects == "audio":

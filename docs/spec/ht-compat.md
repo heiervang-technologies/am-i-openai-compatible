@@ -466,7 +466,22 @@ without either MUST return **400** with
 `error.code: "missing_input"`. Unsupported `output_format` returns
 **400** with `error.code: "unsupported_output_format"`.
 
+`image_url` accepts either an `http(s)://...` URL the server can
+fetch, or an inline `data:image/<format>;base64,<bytes>` URI.
+Clients SHOULD prefer data URIs for small images and absolute URLs
+for large ones; servers MUST accept both.
+
+**v1.0 caveat — text-to-3D is implementation-optional.** Hunyuan3D-2,
+TRELLIS-2, and InstantMesh are all image-to-3D models; text-only
+input is not a portable v1.0 capability. A server that doesn't
+support text-to-3D MUST return **400** with a descriptive
+`error.message` when called with `prompt` alone. Clients
+targeting v1.0 portability SHOULD always send `image_url`.
+Text-to-3D models (e.g. TripoSR, MV-Adapter) are v1.1 territory.
+
 **Response (job submission)**
+
+HTTP **`202 Accepted`** with the job envelope:
 
 ```json
 {
@@ -482,6 +497,8 @@ without either MUST return **400** with
 `status` is one of `"queued"`, `"processing"`, `"completed"`,
 `"failed"`. On the initial submission the response carries `queued`
 or `processing` (never `completed` — generation is minutes-scale).
+The 202 (vs 200) code disambiguates "accepted for processing" from
+"already done"; clients use it to decide whether to start polling.
 `estimated_completion_seconds` is a non-binding hint clients use to
 set their initial poll cadence.
 
