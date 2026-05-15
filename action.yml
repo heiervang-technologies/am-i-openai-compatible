@@ -29,6 +29,10 @@ inputs:
     description: "Optional regex applied to endpoint paths. When set, only matching endpoints are probed. Use to skip the audio/image arm in fast-path PR runs."
     required: false
     default: ""
+  profile:
+    description: "Which catalog rows to probe: 'openai' (default; core/optional/ext) or 'ht' (adds HT-compat extensions per docs/spec/ht-compat.md and FAILs on 404 there)."
+    required: false
+    default: "openai"
   fail-on:
     description: "Threshold that fails the action: 'FAIL' (any FAIL row), 'WARN' (any WARN or FAIL), or 'none' (always succeed). Default 'FAIL'."
     required: false
@@ -118,6 +122,7 @@ runs:
         REPORT_PATH: ${{ inputs.report-path }}
         SKIP_PHASE_B: ${{ inputs.skip-phase-b }}
         ENDPOINTS_FILTER: ${{ inputs.endpoints-filter }}
+        PROFILE: ${{ inputs.profile }}
         FAIL_ON: ${{ inputs.fail-on }}
         STEP_SUMMARY: ${{ inputs.step-summary }}
       run: |
@@ -128,6 +133,9 @@ runs:
         fi
         if [ -n "$ENDPOINTS_FILTER" ]; then
           args+=(--endpoints-filter "$ENDPOINTS_FILTER")
+        fi
+        if [ "$PROFILE" != "openai" ]; then
+          args+=(--profile "$PROFILE")
         fi
         # We never want aioc itself to non-zero-exit here; the action
         # decides via fail-on after parsing the JSON report. This keeps

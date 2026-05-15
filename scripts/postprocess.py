@@ -78,23 +78,44 @@ def _write_summary(events: list[dict], counts: dict[str, int], service: str) -> 
     path = os.environ.get("GITHUB_STEP_SUMMARY")
     if not path:
         return
+    profile = next((e.get("profile") for e in events if e.get("profile")), "openai")
     lines: list[str] = []
-    lines.append(f"## aioc probe — `{service}`")
+    header = f"## aioc probe — `{service}`"
+    if profile != "openai":
+        header += f"  ·  profile `{profile}`"
+    lines.append(header)
     lines.append("")
     summary_parts = [f"{ICON[k]} {counts.get(k, 0)} {k}" for k in ("PASS", "WARN", "FAIL", "SKIP")]
     lines.append(" · ".join(summary_parts))
     lines.append("")
-    lines.append("| Endpoint | Status | Detail |")
-    lines.append("|----------|--------|--------|")
-    for ep in ENDPOINTS:
-        best = _best_event_for(events, ep.path)
-        if best is None:
-            continue
-        status = best.get("status", "")
-        icon = ICON.get(status, "?")
-        detail = (best.get("detail") or "").replace("|", "\\|")[:120]
-        lines.append(f"| `{ep.path}` | {icon} {status} | {detail} |")
-    lines.append("")
+
+    openai_eps = [ep for ep in ENDPOINTS if ep.kind != "ours"]
+    ht_eps = [ep for ep in ENDPOINTS if ep.kind == "ours"]
+
+    def _section(title: str, eps: list) -> list[str]:
+        block: list[str] = []
+        rows: list[str] = []
+        for ep in eps:
+            best = _best_event_for(events, ep.path)
+            if best is None:
+                continue
+            status = best.get("status", "")
+            icon = ICON.get(status, "?")
+            detail = (best.get("detail") or "").replace("|", "\\|")[:120]
+            rows.append(f"| `{ep.path}` | {icon} {status} | {detail} |")
+        if not rows:
+            return block
+        block.append(f"### {title}")
+        block.append("")
+        block.append("| Endpoint | Status | Detail |")
+        block.append("|----------|--------|--------|")
+        block.extend(rows)
+        block.append("")
+        return block
+
+    lines.extend(_section("OpenAI compat", openai_eps))
+    lines.extend(_section("HT compat", ht_eps))
+
     with open(path, "a") as f:
         f.write("\n".join(lines) + "\n")
 

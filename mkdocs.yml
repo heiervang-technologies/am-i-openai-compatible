@@ -77,6 +77,9 @@ nav:
     - Images & videos: spec/images-videos.md
     - Embeddings: spec/embeddings.md
     - Extensions & quirks: spec/extensions.md
+  - HT-compat:
+    - Spec: spec/ht-compat.md
+    - Matrix: ht-compatibility-matrix.md
   - Implementations:
     - Overview: implementations/index.md
     - OpenAI (reference): implementations/openai.md
