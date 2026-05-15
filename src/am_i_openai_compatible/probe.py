@@ -174,7 +174,6 @@ def _classify_kind(model_id: str) -> set[str]:
 PROFILE_KINDS: dict[str, frozenset[str]] = {
     "openai": frozenset({"core", "optional", "ext"}),
     "ht": frozenset({"core", "optional", "ext", "ours"}),
-    "all": frozenset({"core", "optional", "ext", "ours"}),
 }
 
 
@@ -545,7 +544,7 @@ def _argparser() -> argparse.ArgumentParser:
         default="openai",
         help=(
             "which catalog rows to probe: 'openai' (core/optional/ext; default), "
-            "'ht' (adds HT-compat 'ours' rows and FAILs on 404), or 'all' (alias for ht)"
+            "'ht' (adds HT-compat 'ours' rows and FAILs on 404)"
         ),
     )
     return p

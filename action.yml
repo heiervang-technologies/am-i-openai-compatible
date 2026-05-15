@@ -30,7 +30,7 @@ inputs:
     required: false
     default: ""
   profile:
-    description: "Which catalog rows to probe: 'openai' (default; core/optional/ext), 'ht' (adds HT-compat extensions per docs/spec/ht-compat.md and FAILs on 404 there), or 'all' (alias for ht)."
+    description: "Which catalog rows to probe: 'openai' (default; core/optional/ext) or 'ht' (adds HT-compat extensions per docs/spec/ht-compat.md and FAILs on 404 there)."
     required: false
     default: "openai"
   fail-on:

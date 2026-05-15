@@ -313,6 +313,13 @@ ENDPOINTS: list[Endpoint] = [
         group="segment",
         kind="ours",
         multipart=True,
+        # `prompts` ships as a JSON-encoded string form field, not as
+        # a JSON-body key — httpx serializes every value in `body` as a
+        # `multipart/form-data` field when files= is also set. The wire
+        # request carries `name="prompts"` whose value is the JSON
+        # string below, alongside the `name="image"` file part attached
+        # by Prober._multipart_payload. Covered by
+        # test_segmentations_multipart_payload_carries_prompts_as_form_field.
         body={
             "model": "{model}",
             "prompts": '[{"type":"point","x":0.5,"y":0.5,"label":1}]',

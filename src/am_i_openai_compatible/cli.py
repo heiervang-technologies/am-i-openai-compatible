@@ -108,12 +108,11 @@ def build_parser() -> argparse.ArgumentParser:
     )
     sp.add_argument(
         "--profile",
-        choices=("openai", "ht", "all"),
+        choices=("openai", "ht"),
         default="openai",
         help=(
-            "which catalog rows to probe: 'openai' (default), "
-            "'ht' (adds HT-compat extensions; see docs/spec/ht-compat.md), "
-            "or 'all' (alias for ht)"
+            "which catalog rows to probe: 'openai' (default) "
+            "or 'ht' (adds HT-compat extensions; see docs/spec/ht-compat.md)"
         ),
     )
     sp.set_defaults(func=_cmd_probe)

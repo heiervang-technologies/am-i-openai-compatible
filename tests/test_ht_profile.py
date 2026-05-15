@@ -39,7 +39,10 @@ def _ht_paths() -> set[str]:
 def test_profile_kinds_table_is_what_we_expect():
     assert PROFILE_KINDS["openai"] == frozenset({"core", "optional", "ext"})
     assert PROFILE_KINDS["ht"] == frozenset({"core", "optional", "ext", "ours"})
-    assert PROFILE_KINDS["all"] == PROFILE_KINDS["ht"]
+    # No 'all' alias by design — drops a misleading abstraction (cf.
+    # PR #1 review). If a third profile ever lands, we'll add a real
+    # "everything" semantics then, not retroactively re-purpose 'all'.
+    assert "all" not in PROFILE_KINDS
 
 
 def test_unknown_profile_raises():
@@ -74,17 +77,11 @@ def test_ht_profile_includes_ours_rows():
     assert _ht_paths().issubset(seen), _ht_paths() - seen
 
 
-@respx.mock
-def test_all_profile_is_alias_for_ht():
-    respx.get(f"{BASE}/v1/models").mock(
-        return_value=httpx.Response(200, json={"data": [{"id": "chat-1"}]})
-    )
-    respx.route().mock(return_value=httpx.Response(404))
-
-    p = Prober(BASE, "test", phase_b=False, profile="all")
-    events = p.run()
-    seen = {e.endpoint for e in events}
-    assert _ht_paths().issubset(seen)
+def test_unknown_profile_all_raises_after_alias_drop():
+    # Regression guard — `all` was an alias for `ht` until the v0.2
+    # PR review pointed out it was misleading. Verify it's gone.
+    with pytest.raises(ValueError):
+        Prober(BASE, "test", profile="all")
 
 
 @respx.mock
@@ -139,6 +136,42 @@ def test_phase_b_reranking_passes_with_valid_shape():
     assert any(e.phase == "B" and e.status == "PASS" for e in rows), [
         (e.phase, e.status, e.detail) for e in rows
     ]
+
+
+@respx.mock
+def test_segmentations_multipart_payload_carries_prompts_as_form_field():
+    """PR #1 review item: the segmentations row sets multipart=True and
+    embeds the prompts JSON as a string value in body. Verify the wire
+    request actually contains a `prompts` form field with the JSON
+    payload, plus the image file part — i.e. httpx serialized our
+    body dict as form fields, not JSON-body-with-files.
+    """
+    respx.get(f"{BASE}/v1/models").mock(
+        return_value=httpx.Response(200, json={"data": [{"id": "sam3"}]})
+    )
+    captured: dict = {}
+
+    def _capture(request):
+        captured["content_type"] = request.headers.get("content-type", "")
+        captured["body"] = request.content
+        return httpx.Response(200, json={"masks": [{"mask": "AAA"}]})
+
+    respx.post(f"{BASE}/v1/segmentations").mock(side_effect=_capture)
+
+    p = Prober(BASE, "test", profile="ht", endpoints_filter=r"^/v1/segmentations$")
+    p.run()
+
+    assert captured["content_type"].startswith("multipart/form-data"), captured["content_type"]
+    body = captured["body"]
+    # The image file part — _multipart_payload attached probe.png.
+    assert b'name="image"' in body
+    assert b"probe.png" in body
+    # The prompts form field — value is the JSON string from the catalog body.
+    assert b'name="prompts"' in body
+    assert b'"type":"point"' in body
+    # The model form field — same mechanism, value from {model} substitution.
+    assert b'name="model"' in body
+    assert b"sam3" in body
 
 
 @respx.mock
