@@ -37,6 +37,17 @@ from typing import Any
 
 import httpx
 
+try:
+    # websockets is a hard dep at runtime; the import is wrapped so the
+    # rest of the module still loads if a downstream installs an older
+    # release that lacks the sync subpackage. The WS probe path returns
+    # SKIP with a clear message if this import fails.
+    from websockets.exceptions import ConnectionClosed as _WSConnectionClosed
+    from websockets.sync.client import connect as _ws_connect  # type: ignore[attr-defined]
+except ImportError:  # pragma: no cover — exercised only by minimal installs
+    _ws_connect = None  # type: ignore[assignment]
+    _WSConnectionClosed = Exception  # type: ignore[assignment, misc]
+
 from .endpoints import ENDPOINTS, Endpoint
 
 # ---------------------------------------------------------------------------
@@ -192,6 +203,7 @@ class Prober:
         endpoints_filter: str = "",
         profile: str = "openai",
         model: str | None = None,
+        api_key: str | None = None,
     ):
         if profile not in PROFILE_KINDS:
             raise ValueError(f"unknown profile {profile!r}; choose from {sorted(PROFILE_KINDS)}")
@@ -200,6 +212,7 @@ class Prober:
         self.phase_b = phase_b
         self.profile = profile
         self.model_override = model or None
+        self.api_key = api_key or None
         self.conn_timeout = conn_timeout
         self.req_timeout = req_timeout
         self.client = httpx.Client(
@@ -275,6 +288,131 @@ class Prober:
             return self._models_raw[0].get("id")
         return None
 
+    # -- WebSocket primitives -----------------------------------------------
+
+    def _ws_url(self, ep: Endpoint) -> str:
+        """Build a wss://... URL from the base HTTP URL + endpoint path."""
+        scheme_swap = self.base.replace("https://", "wss://", 1).replace("http://", "ws://", 1)
+        return scheme_swap + ep.path.split("[")[0]
+
+    def _ws_headers(self) -> dict[str, str]:
+        h: dict[str, str] = {}
+        if self.api_key:
+            h["Authorization"] = f"Bearer {self.api_key}"
+        # OpenAI's Realtime API uses the openai-beta subprotocol header.
+        # Cheap to set; servers that don't care ignore it.
+        h["openai-beta"] = "realtime=v1"
+        return h
+
+    def _phase_a_ws(self, ep: Endpoint) -> tuple[str, str, int]:
+        """Phase A for WebSocket endpoints — try to open the upgrade.
+
+        Grading:
+          * Upgrade accepted (handshake completes) → PASS
+          * 404 on the upgrade → FAIL (route absent) — `ours` rows under
+            ht profile also FAIL same as core
+          * 401/403 → WARN with "auth required" (route exists; we just
+            don't have a key)
+          * Any other HTTP error during handshake → FAIL
+          * Connection refused / timeout → SKIP
+        """
+        if _ws_connect is None:
+            return "SKIP", "websockets library not available", 0
+        url = self._ws_url(ep)
+        try:
+            with _ws_connect(
+                url,
+                additional_headers=self._ws_headers(),
+                open_timeout=self.conn_timeout,
+                close_timeout=2.0,
+            ):
+                return "PASS", "ws upgrade ok", 101
+        except Exception as exc:  # websockets raises a variety of types
+            return self._ws_handshake_error(exc)
+
+    def _ws_handshake_error(self, exc: BaseException) -> tuple[str, str, int]:
+        """Map a websockets connect failure to a (status, detail, code)."""
+        # InvalidStatus exposes the HTTP response on .response.status_code
+        status = getattr(getattr(exc, "response", None), "status_code", 0)
+        if status == 404:
+            return "FAIL", "404 — endpoint absent", 404
+        if status in (401, 403):
+            return "WARN", f"{status} — auth required for upgrade", status
+        if status:
+            return "FAIL", f"upgrade rejected: {status}", status
+        # No HTTP response → connect-level failure
+        return "SKIP", f"ws connect: {exc.__class__.__name__}: {exc}", 0
+
+    def _phase_b_ws(self, ep: Endpoint) -> tuple[str, str, int]:
+        """Phase B for WebSocket endpoints — send the init event and
+        wait for the expected event-type response.
+
+        Grading:
+          * Upgrade fails → FAIL (Phase A would have caught this too)
+          * Init event sent, expected event received in time → PASS
+          * Connected but no expected event in the budget → WARN
+          * Any other exception → FAIL
+        """
+        if _ws_connect is None:
+            return "SKIP", "websockets library not available", 0
+        if ep.ws_init_event is None or not ep.ws_expect_event:
+            return "SKIP", "no ws signature defined", 0
+
+        url = self._ws_url(ep)
+        # Wait budget is bounded by req_timeout but capped at 10s for the
+        # Phase B happy-path — the Realtime API's session.created is
+        # supposed to land "immediately" post-upgrade, not after long
+        # model warmup.
+        wait_budget = min(self.req_timeout, 10.0)
+
+        try:
+            with _ws_connect(
+                url,
+                additional_headers=self._ws_headers(),
+                open_timeout=self.conn_timeout,
+                close_timeout=2.0,
+            ) as ws:
+                ws.send(json.dumps(ep.ws_init_event))
+                deadline = time.monotonic() + wait_budget
+                seen_types: list[str] = []
+                while time.monotonic() < deadline:
+                    remaining = deadline - time.monotonic()
+                    try:
+                        raw = ws.recv(timeout=remaining)
+                    except TimeoutError:
+                        break
+                    except _WSConnectionClosed:
+                        # Server hung up gracefully — no more events
+                        # coming. Treat the same as a timeout: if we've
+                        # seen the expected event we'd already have
+                        # returned PASS; otherwise fall through to WARN.
+                        break
+                    if isinstance(raw, bytes):
+                        raw = raw.decode("utf-8", errors="replace")
+                    try:
+                        evt = json.loads(raw)
+                    except ValueError:
+                        continue
+                    evt_type = evt.get("type", "")
+                    if evt_type:
+                        seen_types.append(evt_type)
+                    if evt_type == ep.ws_expect_event:
+                        return "PASS", f"saw {evt_type}", 101
+                    if len(seen_types) > 32:
+                        break  # frugal — don't drain
+                if seen_types:
+                    return (
+                        "WARN",
+                        f"no {ep.ws_expect_event!r} (saw: {','.join(seen_types[:4])})",
+                        101,
+                    )
+                return "WARN", f"no events within {wait_budget}s", 101
+        except Exception as exc:
+            status, detail, code = self._ws_handshake_error(exc)
+            if status == "PASS":
+                return "FAIL", f"ws error after upgrade: {exc}", 0
+            return status, detail, code
+
     # -- phase A ------------------------------------------------------------
 
     def _phase_a(self, ep: Endpoint) -> tuple[str, str, int]:
@@ -292,7 +430,12 @@ class Prober:
             text is more useful than guessing config from a status code.
           * Anything else 2xx/4xx → PASS (route exists; Phase B decides
             whether the contract is honored).
+
+        WebSocket endpoints (ep.protocol == "ws") take a separate path —
+        Phase A means "did the upgrade succeed?".
         """
+        if ep.protocol == "ws":
+            return self._phase_a_ws(ep)
         path = ep.path
         # path templating with the most permissive sniffed id (or a
         # placeholder that should still 4xx-not-404 on a real server).
@@ -336,6 +479,8 @@ class Prober:
     def _phase_b(self, ep: Endpoint) -> tuple[str, str, int]:
         if not self.phase_b:
             return "SKIP", "phase B disabled", 0
+        if ep.protocol == "ws":
+            return self._phase_b_ws(ep)
         if ep.expects == () and ep.method != "POST":
             return "SKIP", "no signature defined", 0
 
@@ -590,6 +735,15 @@ def _argparser() -> argparse.ArgumentParser:
             "kind the override can't serve."
         ),
     )
+    p.add_argument(
+        "--openai-api-key",
+        default=None,
+        help=(
+            "bearer token sent on WebSocket upgrades (only used by ws-protocol "
+            "rows like /v1/realtime; ignored for REST probes). Most OSS servers "
+            "accept the empty default; OpenAI-hosted endpoints require a real key."
+        ),
+    )
     return p
 
 
@@ -607,6 +761,7 @@ def main(argv: list[str] | None = None) -> int:
         endpoints_filter=args.endpoints_filter,
         profile=args.profile,
         model=args.model,
+        api_key=args.openai_api_key,
     )
     t0 = time.monotonic()
     events = prober.run()

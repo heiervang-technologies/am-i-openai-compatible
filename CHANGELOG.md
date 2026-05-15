@@ -6,6 +6,23 @@ versions follow [SemVer](https://semver.org/).
 
 ## [Unreleased]
 
+### feat/v0.3-websocket branch (issue #4)
+
+- **WebSocket protocol support.** New `_phase_b_ws` path in the Prober,
+  routed via a new `protocol="ws"` field on the `Endpoint` dataclass.
+  Adds `websockets>=13` as a hard dependency.
+- **`/v1/realtime` catalog row** — OpenAI's Realtime API. Phase A grades
+  the upgrade (101=PASS, 404=FAIL, 401/403=WARN auth-required), Phase B
+  sends a `session.update` event and waits for `session.created`.
+- **`--openai-api-key`** flag on the CLI + action input. Forwarded as
+  `Authorization: Bearer <key>` on WS upgrades; ignored for REST.
+- **`openai-beta: realtime=v1`** header set on every WS upgrade so
+  servers that gate on the subprotocol let the probe through.
+- 6 new tests (`test_ws_probe.py`) covering all 5 grading paths plus
+  auth-header forwarding, running against an in-process `websockets`
+  server.
+- Version bumped 0.2.1 → 0.3.0 (new dep + new protocol surface).
+
 ### feat/v0.2.1-model-select branch (issue #3)
 
 - `--model NAME` override for Phase B body model selection — pins a

@@ -74,6 +74,39 @@ accepts `?api_key=<key>` URL parameters or `X-API-Key` headers is
 adding extension behavior — spec-allowed but worth knowing about for
 client fallbacks.
 
+### WebSocket: `/v1/realtime`
+
+OpenAI's Realtime API uses a WebSocket bidirectional event stream
+rather than HTTP-SSE. `aioc` speaks WS for any catalog row with
+`protocol="ws"` set; today that's only `/v1/realtime` but the path
+generalizes.
+
+Probe behavior:
+
+* **Phase A** = "did the upgrade succeed?". Grading mirrors HTTP:
+  * `101 Switching Protocols` (accepted) → PASS
+  * `404` on the upgrade → FAIL (route absent)
+  * `401`/`403` → WARN — "auth required" — endpoint exists, we just
+    don't have a bearer. Pass `--openai-api-key` (or the `model:`
+    action input's sibling `openai-api-key:`) to authenticate.
+  * Anything else → FAIL with the upgrade status
+  * Connection refused → SKIP (same as HTTP liveness short-circuit)
+* **Phase B** sends a `session.update` event with empty modalities
+  and waits up to 10s for a `session.created` event back. Grading:
+  * `session.created` received → PASS
+  * Connected, other events seen, no `session.created` → WARN
+  * Connected, no events at all in budget → WARN
+* The probe sets `openai-beta: realtime=v1` on every upgrade — the
+  subprotocol header OpenAI's server gates on. Servers that don't
+  care about it ignore it.
+
+OSS-server status: essentially nobody implements the Realtime API
+shape today. Forks that ship a WS event surface (Hume EVI, Sesame
+CSM, in-house S2S) almost always use their own event vocabulary;
+HT-compat could pin a vendor-neutral version in a future v1.1 if a
+reference implementation emerges. For now the catalog probes the
+OpenAI shape as `kind="ext"`.
+
 ### Context compaction (`/v1/responses/compact`)
 
 OpenAI shipped server-side compaction in 2026 as part of the Responses

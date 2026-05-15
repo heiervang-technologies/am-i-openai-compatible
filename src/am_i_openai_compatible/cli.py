@@ -71,6 +71,8 @@ def _cmd_probe(args: argparse.Namespace) -> int:
         forwarded += ["--profile", args.profile]
     if args.model:
         forwarded += ["--model", args.model]
+    if args.openai_api_key:
+        forwarded += ["--openai-api-key", args.openai_api_key]
     return probe.main(forwarded)
 
 
@@ -124,6 +126,15 @@ def build_parser() -> argparse.ArgumentParser:
             "pin a specific model id for Phase B bodies (e.g. 'borealis-4b'); "
             "overrides the default first-listed-model selection. Useful for "
             "router-mode servers where /v1/models[0] is arbitrary."
+        ),
+    )
+    sp.add_argument(
+        "--openai-api-key",
+        default=None,
+        help=(
+            "bearer token for WebSocket upgrades on /v1/realtime-style rows. "
+            "OSS servers usually accept the empty default; OpenAI-hosted "
+            "targets require a real key."
         ),
     )
     sp.set_defaults(func=_cmd_probe)

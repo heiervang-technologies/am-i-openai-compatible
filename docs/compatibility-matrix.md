@@ -26,6 +26,7 @@ Legend: ✅ pass · ⚠️ pass-with-deviation · ❌ not implemented · — out
 |-----------------------------------------|--------|------|-----------|--------|-----------|----------|
 | `/v1/responses`                         | ✅     | ⚠️   | ❌        | ❌     | ❌        | ❌       |
 | `/v1/responses/compact`                 | ✅     | ❌   | ❌        | ❌     | ❌        | ❌       |
+| `/v1/realtime` *(WebSocket)*            | ✅     | ❌   | ❌        | ❌     | ❌        | ❌       |
 | `/v1/audio/translations`                | ✅     | ⚠️   | ❌        | ❌     | ❌        | ❌       |
 | `/v1/images/variations`                 | ✅     | ❌   | ❌        | ❌     | ❌        | ❌       |
 | `/v1/moderations`                       | ✅     | ❌   | ❌        | ❌     | ❌        | ❌       |
