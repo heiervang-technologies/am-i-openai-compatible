@@ -25,6 +25,7 @@ Legend: ✅ pass · ⚠️ pass-with-deviation · ❌ not implemented · — out
 | Endpoint                                | OpenAI | vLLM | llama.cpp | Ollama | LM Studio | TabbyAPI |
 |-----------------------------------------|--------|------|-----------|--------|-----------|----------|
 | `/v1/responses`                         | ✅     | ⚠️   | ❌        | ❌     | ❌        | ❌       |
+| `/v1/responses/compact`                 | ✅     | ❌   | ❌        | ❌     | ❌        | ❌       |
 | `/v1/audio/translations`                | ✅     | ⚠️   | ❌        | ❌     | ❌        | ❌       |
 | `/v1/images/variations`                 | ✅     | ❌   | ❌        | ❌     | ❌        | ❌       |
 | `/v1/moderations`                       | ✅     | ❌   | ❌        | ❌     | ❌        | ❌       |

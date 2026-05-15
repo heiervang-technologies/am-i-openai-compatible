@@ -74,6 +74,41 @@ accepts `?api_key=<key>` URL parameters or `X-API-Key` headers is
 adding extension behavior — spec-allowed but worth knowing about for
 client fallbacks.
 
+### Context compaction (`/v1/responses/compact`)
+
+OpenAI shipped server-side compaction in 2026 as part of the Responses
+API; Codex CLI's `compact_remote.rs` calls it on long sessions to
+shed history without losing model latent state. Two surfaces:
+
+* **Standalone** — `POST /v1/responses/compact` with
+  `{model, input: [ResponseItem...], tools, parallel_tool_calls, ...}`.
+  Returns `{output: [...]}` where one item is
+  `{type: "compaction", encrypted_content: "<opaque-AES-blob>"}`. The
+  client passes the blob back as part of the next `/v1/responses`
+  `input` array; the server decrypts and restores latent state.
+* **Inline** — `POST /v1/responses` with
+  `context_management: {type: "compaction", compact_threshold: <int>}`.
+  When the rendered token count crosses the threshold the server
+  emits the same compaction output item in-stream — no separate call.
+
+`encrypted_content` is intentionally opaque (prevents client-side
+tampering / prompt injection on summaries; carries internal state
+markers OpenAI doesn't expose). Clients MUST NOT inspect or modify
+it.
+
+OSS-server status: essentially nobody implements this today. The
+catalog probes it as `kind="ext"`; expect ❌ on every non-OpenAI
+endpoint. Implementing it server-side without OpenAI's encryption
+key requires either:
+
+* A plaintext fallback (drops the tamper-resistance property but
+  preserves the shape and the "shed-history" semantics — useful
+  enough to be worth a try for forks).
+* Or a public-key envelope the fork controls (much heavier).
+
+If/when an OSS implementation emerges, the matrix flips ⚠️ (shape
+ok, no encryption) or ✅ (full equivalence).
+
 ### Error envelope
 
 The OpenAI error shape:

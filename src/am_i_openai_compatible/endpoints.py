@@ -146,6 +146,27 @@ ENDPOINTS: list[Endpoint] = [
         requires_model_kind="chat",
         notes="newer Responses API; few OSS servers implement",
     ),
+    Endpoint(
+        path="/v1/responses/compact",
+        method="POST",
+        group="chat",
+        kind="ext",
+        body={
+            "model": "{model}",
+            "input": [
+                {
+                    "type": "message",
+                    "role": "user",
+                    "content": [{"type": "input_text", "text": "hi"}],
+                }
+            ],
+            "tools": [],
+            "parallel_tool_calls": False,
+        },
+        expects=("output.0",),
+        requires_model_kind="chat",
+        notes="server-side context compaction (Codex CLI uses this; OpenAI-hosted only)",
+    ),
     # --- embeddings ------------------------------------------------------
     Endpoint(
         path="/v1/embeddings",
