@@ -489,8 +489,10 @@ class Prober:
             # phase B only if A says the route exists
             if a_status != "PASS":
                 continue
-            if ep.path.endswith("/uploads") or ep.path == "/v1/files" or ep.path == "/v1/batches":
-                # admin routes — existence is the meaningful test
+            if ep.path == "/v1/files" or ep.path == "/v1/batches":
+                # admin/list routes — existence is the meaningful test.
+                # /v1/uploads was historically here but graduated to POST
+                # with a real create body in v0.3.1, so it now runs Phase B.
                 continue
 
             b_status, b_detail, b_code = self._phase_b(ep)

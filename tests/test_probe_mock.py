@@ -281,6 +281,58 @@ def test_unreachable_host_skips_everything():
 # ---------------------------------------------------------------------------
 
 
+@respx.mock
+def test_phase_b_uploads_passes_when_create_returns_upload_object():
+    """v0.3.1: /v1/uploads switched from GET (existence-only) to POST
+    creating an upload object. Probe sends the canonical create body
+    (purpose/bytes/filename/mime_type) and validates the upload object
+    shape (id + object) per the OpenAI Uploads API."""
+    respx.get(f"{BASE}/v1/models").mock(
+        return_value=httpx.Response(200, json={"data": [{"id": "chat-1"}]})
+    )
+    captured: dict = {}
+
+    def _capture(request):
+        captured["body"] = request.content
+        return httpx.Response(
+            200,
+            json={
+                "id": "upload_abc",
+                "object": "upload",
+                "bytes": 1024,
+                "filename": "probe.jsonl",
+                "purpose": "fine-tune",
+                "status": "pending",
+                "created_at": 1,
+            },
+        )
+
+    respx.post(f"{BASE}/v1/uploads").mock(side_effect=_capture)
+
+    p = Prober(BASE, "test", endpoints_filter=r"^/v1/uploads$")
+    events = p.run()
+    rows = _events_by_endpoint(events, "/v1/uploads")
+    assert any(e.phase == "B" and e.status == "PASS" for e in rows), [
+        (e.phase, e.status, e.detail) for e in rows
+    ]
+    body = captured["body"]
+    assert b'"purpose"' in body
+    assert b'"bytes"' in body
+    assert b'"filename"' in body
+    assert b'"mime_type"' in body
+
+
+def test_images_variations_row_is_pruned():
+    """Regression guard: /v1/images/variations was pruned in v0.3.1
+    after an unauth probe of api.openai.com on 2026-05-16 returned 404.
+    OpenAI's docs no longer list it; canonical image-variation flow
+    moved to /v1/images/edits with gpt-image-1."""
+    from am_i_openai_compatible.endpoints import ENDPOINTS
+
+    paths = {e.path for e in ENDPOINTS}
+    assert "/v1/images/variations" not in paths
+
+
 def test_invalid_filter_regex_raises_at_construction():
     with pytest.raises(re.error):
         Prober(BASE, "test", endpoints_filter="(unbalanced")
