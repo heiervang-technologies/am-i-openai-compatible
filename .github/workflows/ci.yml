@@ -11,7 +11,10 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        python-version: ["3.10", "3.11", "3.12"]
+        # Adding 3.13 + 3.14 to surface forward-compat issues sooner.
+        # Local dev runs 3.14 already; CI should catch any regressions
+        # the same day a contributor on an older interpreter merges.
+        python-version: ["3.10", "3.11", "3.12", "3.13", "3.14"]
 
     steps:
       - uses: actions/checkout@v4
