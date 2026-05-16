@@ -55,6 +55,10 @@ class Endpoint:
     expects: object = ()  # tuple of dotted keys, or sentinel str
     requires_model_kind: str | None = None  # "chat" | "embed" | "asr" | …
     notes: str = ""
+    protocol: str = "http"  # "http" (REST/SSE) or "ws" (WebSocket); ws rows
+    # go through Prober._phase_b_ws instead of the http POST/GET paths.
+    ws_init_event: dict | None = None  # event to send after WS upgrade
+    ws_expect_event: str = ""  # event "type" we expect back to count as PASS
 
 
 # ---------------------------------------------------------------------------
@@ -145,6 +149,19 @@ ENDPOINTS: list[Endpoint] = [
         expects=("output",),
         requires_model_kind="chat",
         notes="newer Responses API; few OSS servers implement",
+    ),
+    Endpoint(
+        path="/v1/realtime",
+        method="GET",  # WS upgrades go through GET in the HTTP layer
+        group="chat",
+        kind="ext",
+        protocol="ws",
+        ws_init_event={
+            "type": "session.update",
+            "session": {"turn_detection": None, "modalities": ["text"]},
+        },
+        ws_expect_event="session.created",
+        notes="OpenAI Realtime API; WebSocket bidirectional events; almost no OSS impls",
     ),
     Endpoint(
         path="/v1/responses/compact",

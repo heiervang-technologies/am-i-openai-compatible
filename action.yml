@@ -37,6 +37,10 @@ inputs:
     description: "Pin a specific model id for Phase B bodies (e.g. 'borealis-4b'). Default behavior picks the first model from /v1/models, which is arbitrary on router-mode servers. Falls back to kind-based selection for endpoints whose required kind the override can't serve."
     required: false
     default: ""
+  openai-api-key:
+    description: "Bearer token for WebSocket upgrades on /v1/realtime-style rows (ignored for REST endpoints). OSS servers usually accept the empty default; OpenAI-hosted targets require a real key. Use a GitHub Secret."
+    required: false
+    default: ""
   fail-on:
     description: "Threshold that fails the action: 'FAIL' (any FAIL row), 'WARN' (any WARN or FAIL), or 'none' (always succeed). Default 'FAIL'."
     required: false
@@ -128,6 +132,7 @@ runs:
         ENDPOINTS_FILTER: ${{ inputs.endpoints-filter }}
         PROFILE: ${{ inputs.profile }}
         MODEL: ${{ inputs.model }}
+        OPENAI_API_KEY: ${{ inputs.openai-api-key }}
         FAIL_ON: ${{ inputs.fail-on }}
         STEP_SUMMARY: ${{ inputs.step-summary }}
       run: |
@@ -144,6 +149,9 @@ runs:
         fi
         if [ -n "$MODEL" ]; then
           args+=(--model "$MODEL")
+        fi
+        if [ -n "$OPENAI_API_KEY" ]; then
+          args+=(--openai-api-key "$OPENAI_API_KEY")
         fi
         # We never want aioc itself to non-zero-exit here; the action
         # decides via fail-on after parsing the JSON report. This keeps
