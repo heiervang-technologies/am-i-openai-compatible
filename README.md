@@ -87,6 +87,25 @@ source of truth, the prober uses it directly, and the docs render it
 unchanged. When OpenAI ships a new endpoint or an OSS server changes
 behavior, you update one file.
 
+## Baselines
+
+What real OpenAI-compatible servers actually implement, as observed
+by `aioc probe`. Each entry names a target, the date probed, and the
+noteworthy findings:
+
+* **OpenAI** (`api.openai.com`) — full Phase A surface lights up
+  unauth; `/v1/realtime` WS upgrade accepts unauth too.
+* **ht-comfy-openai** (titan) — image / video / 3D pipeline; two
+  real server bugs surfaced (`/v1/images/edits` 500 on empty body,
+  `/v1/images/generations` timeout).
+* **lile / live-learn** — chat-only daemon; companion proxy returns
+  501 with a non-canonical HTML error page.
+* **llama.cpp vanilla** — baselined by the fork's own CI.
+* **vLLM** / **vllm-omni** — deployment URLs pending.
+
+Full reports + per-target findings at
+[`docs/baselines.md`](docs/baselines.md).
+
 ## Docs
 
 Full spec walkthrough, per-implementation deep-dives, and the

@@ -89,4 +89,5 @@ nav:
     - LM Studio: implementations/lmstudio.md
     - TabbyAPI: implementations/tabbyapi.md
   - Compatibility matrix: compatibility-matrix.md
+  - Baselines: baselines.md
   - Contributing: contributing.md
