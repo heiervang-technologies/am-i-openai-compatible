@@ -271,17 +271,16 @@ ENDPOINTS: list[Endpoint] = [
         requires_model_kind="image-edit",
         notes="OpenAI requires multipart/form-data with image+mask",
     ),
-    Endpoint(
-        path="/v1/images/variations",
-        method="POST",
-        group="images",
-        kind="ext",
-        multipart=True,
-        body={"model": "{model}", "n": 1, "size": "256x256", "response_format": "b64_json"},
-        expects=("data.0",),
-        requires_model_kind="image-edit",
-        notes="rare in OSS — DALL·E-only feature historically",
-    ),
+    # /v1/images/variations is intentionally absent.
+    #
+    # OpenAI returned 404 on this path during an unauth probe of
+    # api.openai.com on 2026-05-16 (.probe-reports/openai-api-com-
+    # 2026-05-16-unauth.json), and the public Images API docs no longer
+    # list it — the canonical image-variation flow is now
+    # /v1/images/edits with the `gpt-image-1` model. The row used to
+    # ship as kind="ext"; pruning it instead of inventing a "legacy"
+    # bucket keeps the catalog honest about the current OpenAI surface.
+    # If OpenAI brings it back, re-add. See issue #7.
     # --- moderations -----------------------------------------------------
     Endpoint(
         path="/v1/moderations",
@@ -311,11 +310,23 @@ ENDPOINTS: list[Endpoint] = [
     ),
     Endpoint(
         path="/v1/uploads",
-        method="GET",
+        method="POST",
         group="files",
         kind="ext",
-        expects=(),
-        notes="newer OpenAI multipart uploads; existence-only check",
+        # POST /v1/uploads creates an upload object; subsequent
+        # PUT /v1/uploads/{id}/parts then POST /v1/uploads/{id}/complete
+        # finalize it. We only probe the create step — the multi-step
+        # finalize requires real file bytes and would breach the
+        # ≤2 reqs/endpoint budget. Verified via unauth probe of
+        # api.openai.com on 2026-05-16 (issue #7).
+        body={
+            "purpose": "fine-tune",
+            "bytes": 1024,
+            "filename": "probe.jsonl",
+            "mime_type": "application/jsonl",
+        },
+        expects=("id", "object"),
+        notes="newer OpenAI multipart uploads; POST root creates upload object",
     ),
     # --- HT-compat extensions (docs/spec/ht-compat.md) -------------------
     # These rows are probed only under `--profile ht`. A 404 there is a

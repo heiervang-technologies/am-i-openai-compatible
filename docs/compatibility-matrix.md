@@ -28,7 +28,6 @@ Legend: ✅ pass · ⚠️ pass-with-deviation · ❌ not implemented · — out
 | `/v1/responses/compact`                 | ✅     | ❌   | ❌        | ❌     | ❌        | ❌       |
 | `/v1/realtime` *(WebSocket)*            | ✅     | ❌   | ❌        | ❌     | ❌        | ❌       |
 | `/v1/audio/translations`                | ✅     | ⚠️   | ❌        | ❌     | ❌        | ❌       |
-| `/v1/images/variations`                 | ✅     | ❌   | ❌        | ❌     | ❌        | ❌       |
 | `/v1/moderations`                       | ✅     | ❌   | ❌        | ❌     | ❌        | ❌       |
 | `/v1/files`                             | ✅     | ❌   | ❌        | ❌     | ❌        | ❌       |
 | `/v1/fine_tuning/jobs`                  | ✅     | ❌   | ❌        | ❌     | ❌        | ❌       |
@@ -46,6 +45,16 @@ For endpoints all servers implement, what's actually different:
 | OpenAI error envelope on 4xx                      | ✅     | ✅   | ⚠️        | ⚠️     | ⚠️        | ⚠️       |
 | `cache_prompt` / KV-cache reuse                   | n/a    | ✅   | ✅        | ⚠️     | ✅        | ✅       |
 | Logprobs on chat completions                      | ✅     | ✅   | ✅        | ⚠️     | ⚠️        | ⚠️       |
+
+## Retired
+
+Endpoints OpenAI used to expose but no longer route:
+
+* **`/v1/images/variations`** — DALL·E-2-era image variation endpoint.
+  An unauth probe of `api.openai.com` on 2026-05-16 returned 404; the
+  public Images API docs no longer list it. The canonical
+  image-variation flow is now `/v1/images/edits` with `gpt-image-1`.
+  Pruned from the catalog in v0.3.1 (see issue #7).
 
 ## Caveats
 
