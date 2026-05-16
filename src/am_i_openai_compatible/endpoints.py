@@ -146,6 +146,27 @@ ENDPOINTS: list[Endpoint] = [
         requires_model_kind="chat",
         notes="newer Responses API; few OSS servers implement",
     ),
+    Endpoint(
+        path="/v1/responses/compact",
+        method="POST",
+        group="chat",
+        kind="ext",
+        body={
+            "model": "{model}",
+            "input": [
+                {
+                    "type": "message",
+                    "role": "user",
+                    "content": [{"type": "input_text", "text": "hi"}],
+                }
+            ],
+            "tools": [],
+            "parallel_tool_calls": False,
+        },
+        expects=("output.0",),
+        requires_model_kind="chat",
+        notes="server-side context compaction (Codex CLI uses this; OpenAI-hosted only)",
+    ),
     # --- embeddings ------------------------------------------------------
     Endpoint(
         path="/v1/embeddings",
@@ -288,10 +309,18 @@ ENDPOINTS: list[Endpoint] = [
         method="POST",
         group="video",
         kind="ours",
-        body={"model": "{model}", "prompt": "a slow zoom on a red dot", "seconds": 1},
+        body={
+            "model": "{model}",
+            "prompt": "a slow zoom on a red dot",
+            "image_url": (
+                "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAA"
+                "AAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII="
+            ),
+            "seconds": 1,
+        },
         expects=("id", "status"),
         requires_model_kind="video",
-        notes="HT-compat: Sora-style video job submission",
+        notes="HT-compat: Sora-style video job submission (image_url tolerated; image-to-video models like LTX require it)",
     ),
     Endpoint(
         path="/v1/reranking",
@@ -380,6 +409,25 @@ ENDPOINTS: list[Endpoint] = [
         expects=("data.layers.0.b64_json",),
         requires_model_kind="image-decompose",
         notes="HT-compat: Qwen-Image-Layered-style RGBA layer decomposition",
+    ),
+    Endpoint(
+        path="/v1/3d/generations",
+        method="POST",
+        group="3d",
+        kind="ours",
+        body={
+            "model": "{model}",
+            "image_url": (
+                "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAA"
+                "AAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII="
+            ),
+            "prompt": "a small red cube",
+            "output_format": "glb",
+            "n": 1,
+        },
+        expects=("id", "status"),
+        requires_model_kind="3d",
+        notes="HT-compat: TRELLIS/Hunyuan3D-style async 3D mesh generation (ComfyUI backend; image_url required, text-to-3D is v1.1)",
     ),
 ]
 

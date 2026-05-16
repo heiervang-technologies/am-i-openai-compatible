@@ -13,14 +13,15 @@ Legend: ✅ pass · ⚠️ pass-with-deviation · ❌ not implemented · — out
 
 ## HT-compat-1.0 endpoints
 
-| Endpoint                            | ht-llama.cpp | vLLM omni | vanilla llama.cpp | OpenAI |
-|-------------------------------------|--------------|-----------|-------------------|--------|
-| `/v1/reranking`                     | ⚠️            | ⚠️         | ⚠️                 | —      |
-| `/v1/segmentations`                 | ❌            | ❌         | ❌                 | —      |
-| `/v1/audio/segmentations`           | ❌            | ❌         | ❌                 | —      |
-| `/v1/chat/completions` *(omni)*     | ❌            | ✅         | ❌                 | —      |
-| `/v1/images/decompositions`         | ❌            | ❌         | ❌                 | —      |
-| `/v1/videos`                        | ❌            | ❌         | ❌                 | —      |
+| Endpoint                            | ht-llama.cpp | vLLM omni | vanilla llama.cpp | titan-comfy-openai | OpenAI |
+|-------------------------------------|--------------|-----------|-------------------|--------------------|--------|
+| `/v1/reranking`                     | ⚠️            | ⚠️         | ⚠️                 | ❌                  | —      |
+| `/v1/segmentations`                 | ❌            | ❌         | ❌                 | ❌                  | —      |
+| `/v1/audio/segmentations`           | ❌            | ❌         | ❌                 | ❌                  | —      |
+| `/v1/chat/completions` *(omni)*     | ❌            | ✅         | ❌                 | ❌                  | —      |
+| `/v1/images/decompositions`         | ❌            | ❌         | ❌                 | ❌                  | —      |
+| `/v1/3d/generations`                | ❌            | ❌         | ❌                 | **✅**              | —      |
+| `/v1/videos`                        | ❌            | ❌         | ❌                 | **✅**              | —      |
 
 ## Reference implementations
 
@@ -35,6 +36,7 @@ matrix above tracks which servers have adopted the canonical shape.
 | `/v1/audio/segmentations`       | Meta SAM-Audio (paper + reference Python)             |
 | `/v1/chat/completions[omni]`    | vLLM-Omni serving Qwen2.5-Omni                        |
 | `/v1/images/decompositions`     | Qwen-Image-Layered via fal.ai                         |
+| `/v1/3d/generations`            | TRELLIS-2 + Hunyuan3D via ComfyUI workflow shim       |
 | `/v1/videos`                    | OpenAI Sora signature (HT-implemented; no OSS impls yet) |
 
 ## Scope per fork
@@ -63,6 +65,15 @@ once the server has wired up the endpoints it claims.
   gaps; if OpenAI ships a `/v1/segmentations` we'll re-evaluate.
 * **`⚠️` for vLLM rerank** because vLLM's rerank endpoint is
   Cohere-compatible (no `/v1/` prefix); the response shape matches.
+* **`✅` for titan-comfy-openai 3D generations** — first HT-compat
+  endpoint with a working OSS implementation. Hunyuan3D-2 served via
+  ComfyUI workflow shim; verified end-to-end with `aioc probe
+  http://192.168.8.170:30385 --profile ht` (Phase A + Phase B both
+  PASS). HTTP 202 on submission, GLB returned via `/v1/3d/generations/{id}/content`.
+* **`✅` for titan-comfy-openai videos** — flipped from ⚠️ after
+  comfy-openai v5 added Pydantic `image_url` alias on the videos
+  handler (legacy `image` still accepted). Verified with `aioc probe
+  --profile ht` against ltx-2.3.
 * **`⚠️` for llama.cpp rerank** (both forks) because `llama-server`
   ships the `/v1/reranking` route from upstream and, when booted
   *without* `--reranking`, returns 501 with the canonical OpenAI

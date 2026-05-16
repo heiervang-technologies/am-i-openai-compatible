@@ -190,6 +190,37 @@ def test_phase_b_chat_fails_when_required_keys_missing():
 
 
 @respx.mock
+def test_phase_b_responses_compact_passes_with_output_array():
+    """OpenAI's /v1/responses/compact (used by Codex CLI compact_remote.rs)
+    returns {output: [...]} with one item of type='compaction'. Phase B
+    only validates the output array is non-empty — encrypted_content is
+    opaque by design."""
+    respx.get(f"{BASE}/v1/models").mock(
+        return_value=httpx.Response(200, json={"data": [{"id": "chat-1"}]})
+    )
+    respx.post(f"{BASE}/v1/responses/compact").mock(
+        return_value=httpx.Response(
+            200,
+            json={
+                "output": [
+                    {
+                        "type": "compaction",
+                        "encrypted_content": "AAAAA-opaque-AES-blob",
+                    }
+                ]
+            },
+        )
+    )
+
+    p = Prober(BASE, "test", endpoints_filter=r"^/v1/responses/compact$")
+    events = p.run()
+    rows = _events_by_endpoint(events, "/v1/responses/compact")
+    assert any(e.phase == "B" and e.status == "PASS" for e in rows), [
+        (e.phase, e.status, e.detail) for e in rows
+    ]
+
+
+@respx.mock
 def test_phase_b_sse_stream_with_done_passes():
     respx.get(f"{BASE}/v1/models").mock(
         return_value=httpx.Response(200, json={"data": [{"id": "chat-1"}]})

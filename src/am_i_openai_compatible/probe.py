@@ -155,6 +155,8 @@ def _classify_kind(model_id: str) -> set[str]:
         kinds.add("image-decompose")
     if any(k in s for k in ("video", "wan", "ltx", "cogvideo", "sora")):
         kinds.add("video")
+    if any(k in s for k in ("trellis", "hunyuan3d", "instantmesh")):
+        kinds.add("3d")
     if "sam-audio" in s or "audio-sam" in s:
         kinds.add("audio-segment")
     if "sam" in s and "audio" not in s:
@@ -189,6 +191,7 @@ class Prober:
         http2: bool = False,
         endpoints_filter: str = "",
         profile: str = "openai",
+        model: str | None = None,
     ):
         if profile not in PROFILE_KINDS:
             raise ValueError(f"unknown profile {profile!r}; choose from {sorted(PROFILE_KINDS)}")
@@ -196,6 +199,7 @@ class Prober:
         self.name = name
         self.phase_b = phase_b
         self.profile = profile
+        self.model_override = model or None
         self.conn_timeout = conn_timeout
         self.req_timeout = req_timeout
         self.client = httpx.Client(
@@ -240,6 +244,37 @@ class Prober:
             for k in _classify_kind(mid):
                 self.models_by_kind.setdefault(k, []).append(mid)
 
+    # -- model selection ----------------------------------------------------
+
+    def _pick_model(self, ep: Endpoint) -> str | None:
+        """Pick a model id to use for this endpoint's probe.
+
+        Precedence:
+          1. If --model NAME is set AND the override's classified kind
+             includes ep.requires_model_kind (or ep has no kind
+             requirement), use the override. This handles the
+             router-mode case where /v1/models[0] is arbitrary and the
+             operator wants to pin a known-good model.
+          2. First model classified as ep.requires_model_kind.
+          3. First model in /v1/models (last-resort fallback).
+          4. None — Phase B should SKIP.
+        """
+        if self.model_override:
+            override = self.model_override
+            override_kinds = _classify_kind(override)
+            if ep.requires_model_kind is None or ep.requires_model_kind in override_kinds:
+                return override
+            # Override doesn't match the endpoint's required kind; fall
+            # through to the kind-based selection so e.g.
+            # `--model borealis-4b` doesn't break /v1/embeddings.
+        if ep.requires_model_kind:
+            opts = self.models_by_kind.get(ep.requires_model_kind, [])
+            if opts:
+                return opts[0]
+        if self._models_raw:
+            return self._models_raw[0].get("id")
+        return None
+
     # -- phase A ------------------------------------------------------------
 
     def _phase_a(self, ep: Endpoint) -> tuple[str, str, int]:
@@ -262,11 +297,7 @@ class Prober:
         # path templating with the most permissive sniffed id (or a
         # placeholder that should still 4xx-not-404 on a real server).
         if "{model}" in path:
-            mid = (
-                self.models_by_kind.get(ep.requires_model_kind or "chat")
-                or [m["id"] for m in self._models_raw if "id" in m]
-                or ["__probe_nonexistent__"]
-            )[0]
+            mid = self._pick_model(ep) or "__probe_nonexistent__"
             path = path.replace("{model}", mid)
 
         # Strip the [stream] label we use to disambiguate streaming chat.
@@ -308,17 +339,7 @@ class Prober:
         if ep.expects == () and ep.method != "POST":
             return "SKIP", "no signature defined", 0
 
-        # Pick a model id of the right kind, if any.
-        model_id: str | None = None
-        if ep.requires_model_kind:
-            opts = self.models_by_kind.get(ep.requires_model_kind, [])
-            if opts:
-                model_id = opts[0]
-            elif self._models_raw:
-                # fallback: use the first listed model
-                model_id = self._models_raw[0]["id"]
-        elif self._models_raw and ep.body and "{model}" in json.dumps(ep.body):
-            model_id = self._models_raw[0]["id"]
+        model_id = self._pick_model(ep)
 
         if ep.body is None and ep.method == "GET":
             return self._phase_b_get(ep)
@@ -361,8 +382,17 @@ class Prober:
         except httpx.HTTPError as e:
             return "FAIL", f"http error: {e}", 0
 
-        if r.status_code != 200:
+        if r.status_code == 503:
+            # Transient capability gap — autoload-on-demand router that
+            # couldn't bring the model up right this instant, server
+            # under temporary memory pressure, etc. Endpoint is wired,
+            # bytes are spec-correct, but right-now-not-available. WARN
+            # mirrors how Phase A grades 501.
+            return "WARN", f"503 — {_server_error_message(r)}", 503
+        if not (200 <= r.status_code < 300):
             return "FAIL", f"POST → {r.status_code}: {r.text[:120]}", r.status_code
+        # 2xx — including 202 Accepted for async job submission. Shape
+        # validation below handles whether the envelope is correct.
 
         # Audio/image responses are non-JSON.
         if ep.expects == "audio":
@@ -390,6 +420,9 @@ class Prober:
             with self.client.stream("POST", url, json=body, timeout=self.req_timeout) as r:
                 status = r.status_code
                 ct = r.headers.get("content-type", "")
+                if status == 503:
+                    r.read()  # so httpx populates r.text for the error helper
+                    return ("WARN", f"503 — {_server_error_message(r)}", 503)
                 if status != 200 or "text/event-stream" not in ct:
                     return ("FAIL", f"POST stream → {status} ct={ct!r}", status)
                 for line in r.iter_lines():
@@ -547,6 +580,16 @@ def _argparser() -> argparse.ArgumentParser:
             "'ht' (adds HT-compat 'ours' rows and FAILs on 404)"
         ),
     )
+    p.add_argument(
+        "--model",
+        default=None,
+        help=(
+            "pin a specific model id for Phase B bodies (e.g. 'borealis-4b'). "
+            "Useful for router-mode servers where /v1/models[0] is arbitrary. "
+            "Falls back to kind-based selection for endpoints whose required "
+            "kind the override can't serve."
+        ),
+    )
     return p
 
 
@@ -563,6 +606,7 @@ def main(argv: list[str] | None = None) -> int:
         req_timeout=args.req_timeout,
         endpoints_filter=args.endpoints_filter,
         profile=args.profile,
+        model=args.model,
     )
     t0 = time.monotonic()
     events = prober.run()

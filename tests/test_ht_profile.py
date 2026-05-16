@@ -286,6 +286,36 @@ def test_phase_b_chat_omni_passes_with_audio_in_message():
 
 
 @respx.mock
+def test_phase_b_3d_generations_passes_with_job_envelope():
+    """Async job submission shape (mirrors /v1/videos): server returns
+    {id, status} on POST; clients poll GET /v1/3d/generations/{id}
+    for completion. Phase B only validates the submission shape."""
+    respx.get(f"{BASE}/v1/models").mock(
+        return_value=httpx.Response(200, json={"data": [{"id": "trellis-image-large"}]})
+    )
+    respx.post(f"{BASE}/v1/3d/generations").mock(
+        return_value=httpx.Response(
+            200,
+            json={
+                "id": "model3d-abc123",
+                "object": "3d.generation",
+                "created": 1,
+                "model": "trellis-image-large",
+                "status": "queued",
+                "estimated_completion_seconds": 180,
+            },
+        )
+    )
+
+    p = Prober(BASE, "test", profile="ht", endpoints_filter=r"^/v1/3d/generations$")
+    events = p.run()
+    rows = _events_by_endpoint(events, "/v1/3d/generations")
+    assert any(e.phase == "B" and e.status == "PASS" for e in rows), [
+        (e.phase, e.status, e.detail) for e in rows
+    ]
+
+
+@respx.mock
 def test_phase_b_images_decompositions_passes_with_layered_shape():
     respx.get(f"{BASE}/v1/models").mock(
         return_value=httpx.Response(200, json={"data": [{"id": "qwen-image-layered"}]})

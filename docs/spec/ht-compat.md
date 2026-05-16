@@ -418,6 +418,155 @@ codec-aligned framing once a reference impl exists to crib from.
 
 ---
 
+### `/v1/3d/generations` — image/text-to-3D mesh generation
+
+**Aligned with:** TRELLIS-2 (Microsoft), Hunyuan3D (Tencent), InstantMesh.
+Async job submission — 3D generation is minutes-scale; sync responses
+would block clients. Mirrors the `/v1/videos` job-submission pattern
+in this spec.
+
+**Reference backend:** ComfyUI is the most common OSS execution
+backend for these models (via the ComfyUI-3D-Pack, TRELLIS-ComfyUI,
+and Hunyuan3D-ComfyUI node sets). An HT-compat server typically
+ships a thin HTTP shim that translates `/v1/3d/generations` calls
+into a ComfyUI workflow graph, POSTs it to ComfyUI's `/prompt`
+endpoint, polls `/history/{prompt_id}` for completion, and serves
+the resulting GLB/OBJ file back through `data[].url`.
+
+**Request**
+
+```http
+POST /v1/3d/generations
+Content-Type: application/json
+```
+
+```json
+{
+  "model": "trellis-image-large",
+  "image_url": "https://example.com/source.png",
+  "prompt": "a low-poly fox sculpture, game-ready",
+  "output_format": "glb",
+  "n": 1,
+  "seed": 42
+}
+```
+
+| Field | Type | Required | Notes |
+|---|---|---|---|
+| `model` | string | yes | model id from `/v1/models` (e.g. `trellis-image-large`, `hunyuan3d-2`) |
+| `image_url` | string | conditional | required for image-to-3D models (TRELLIS, Hunyuan3D) |
+| `prompt` | string | conditional | required for text-to-3D models; optional refinement hint for image-to-3D |
+| `output_format` | string | no | `"glb"` (default), `"obj"`, `"ply"`, `"usdz"` |
+| `n` | integer | no | number of variants (default `1`) |
+| `seed` | integer | no | reproducibility |
+| `texture_resolution` | integer | no | `1024` (default), `2048`, `4096` |
+
+At least one of `image_url` or `prompt` MUST be present. Servers
+without either MUST return **400** with
+`error.code: "missing_input"`. Unsupported `output_format` returns
+**400** with `error.code: "unsupported_output_format"`.
+
+`image_url` accepts inline `data:image/<format>;base64,<bytes>` URIs
+**(MUST)** and `http(s)://...` URLs the server can fetch **(MAY)**.
+
+Servers that opt into http(s) URL fetching MUST validate the URL
+against an egress-hardening policy (no private/link-local/loopback
+ranges, no metadata endpoints, etc.) per OWASP SSRF guidance —
+fetching arbitrary attacker-controlled URLs is a real cross-tenant
+risk in shared deployments. Servers without that hardening SHOULD
+reject http(s) URLs with **400** and `error.code:
+"unsupported_image_url_scheme"` and document data-URI-only support
+in their `/v1/models` notes.
+
+Clients targeting v1.0 portability SHOULD send data URIs — every
+HT-compat-1.0 server accepts them; http(s) URL fetching is a server
+opt-in.
+
+**v1.0 caveat — text-to-3D is implementation-optional.** Hunyuan3D-2,
+TRELLIS-2, and InstantMesh are all image-to-3D models; text-only
+input is not a portable v1.0 capability. A server that doesn't
+support text-to-3D MUST return **400** with a descriptive
+`error.message` when called with `prompt` alone. Clients
+targeting v1.0 portability SHOULD always send `image_url`.
+Text-to-3D models (e.g. TripoSR, MV-Adapter) are v1.1 territory.
+
+**Response (job submission)**
+
+HTTP **`202 Accepted`** with the job envelope:
+
+```json
+{
+  "id": "model3d-abc123",
+  "object": "3d.generation",
+  "created": 1234567890,
+  "model": "trellis-image-large",
+  "status": "queued",
+  "estimated_completion_seconds": 180
+}
+```
+
+`status` is one of `"queued"`, `"processing"`, `"completed"`,
+`"failed"`. On the initial submission the response carries `queued`
+or `processing` (never `completed` — generation is minutes-scale).
+The 202 (vs 200) code disambiguates "accepted for processing" from
+"already done"; clients use it to decide whether to start polling.
+`estimated_completion_seconds` is a non-binding hint clients use to
+set their initial poll cadence.
+
+**Polling**
+
+```http
+GET /v1/3d/generations/{id}
+```
+
+Returns the same envelope shape. When `status` is `"completed"`,
+the `data` array is populated:
+
+```json
+{
+  "id": "model3d-abc123",
+  "object": "3d.generation",
+  "created": 1234567890,
+  "model": "trellis-image-large",
+  "status": "completed",
+  "data": [
+    {
+      "url": "https://example.com/files/model3d-abc123.glb",
+      "format": "glb",
+      "size_bytes": 1572864,
+      "preview_image_url": "https://example.com/files/model3d-abc123-preview.png",
+      "expires_at": 1234654290
+    }
+  ]
+}
+```
+
+`data[].url` MAY be an absolute CDN URL or a relative path served by
+the same server (e.g. `/v1/files/<file-id>`). `preview_image_url` is
+optional but RECOMMENDED — clients use it for catalog thumbnails
+without downloading the full mesh. `expires_at` is a Unix timestamp
+after which the server MAY garbage-collect the file; clients SHOULD
+persist locally before then (same convention as
+`message.audio.expires_at` in the omni shape).
+
+On `status: "failed"`, the envelope MUST include
+`error: {message, type, code}` per the canonical envelope rule.
+
+**Notes**
+
+- 3D generation typically runs **2–10 minutes** per request. Clients
+  SHOULD poll no more than once every 5 seconds for long jobs, and
+  back off from the `estimated_completion_seconds` hint.
+- A server under load MAY return **503** with the canonical envelope
+  on submission (transient queue saturation) — clients retry with
+  exponential backoff, same as the v0.2.1 503 grading rule for other
+  endpoints.
+- ComfyUI bridges typically expose model ids that match the
+  workflow name (e.g. `trellis-image-large`, `hunyuan3d-2-mv`).
+  Clients SHOULD discover available models via `/v1/models`.
+
+---
+
 ### `/v1/images/decompositions` — layered image generation
 
 **Aligned with:** Qwen Image Layered. Generates a stack of RGBA layers
@@ -515,7 +664,6 @@ not pin in v1.0. Sketches here are non-normative.
 * **`/v1/audio/generations`** — MusicGen / Stable Audio Open. Distinct
   from `/v1/audio/speech` (TTS): general audio synthesis from a text
   prompt.
-* **`/v1/3d/generations`** — TRELLIS / Hunyuan3D. Image-to-mesh (GLB).
 * **`/v1/realtime`** — speech-to-speech via WebSocket. Aligns with
   OpenAI's Realtime API once that signature stabilizes.
 
