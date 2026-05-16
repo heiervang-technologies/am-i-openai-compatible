@@ -29,5 +29,6 @@ site/
 # Reports / scratch outputs
 report*.json
 *.report.json
+.probe-reports/
 .coverage
 htmlcov/
