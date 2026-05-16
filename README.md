@@ -90,21 +90,22 @@ behavior, you update one file.
 ## Baselines
 
 What real OpenAI-compatible servers actually implement, as observed
-by `aioc probe`. Each entry names a target, the date probed, and the
-noteworthy findings:
+by `aioc probe` (catalog: 27 rows, `aioc 0.3.0`).
 
-* **OpenAI** (`api.openai.com`) — full Phase A surface lights up
-  unauth; `/v1/realtime` WS upgrade accepts unauth too.
-* **ht-comfy-openai** (titan) — image / video / 3D pipeline; two
-  real server bugs surfaced (`/v1/images/edits` 500 on empty body,
-  `/v1/images/generations` timeout).
-* **lile / live-learn** — chat-only daemon; companion proxy returns
-  501 with a non-canonical HTML error page.
-* **llama.cpp vanilla** — baselined by the fork's own CI.
-* **vLLM** / **vllm-omni** — deployment URLs pending.
+| Target                   | Probed     | Profile         | PASS · WARN · FAIL · SKIP | Notable finding                                                       |
+| ------------------------ | ---------- | --------------- | ------------------------- | --------------------------------------------------------------------- |
+| OpenAI `api.openai.com`  | 2026-05-16 | openai (unauth) | 20 · 0 · 4 · 14           | `/v1/realtime` accepts unauth WS upgrade (101 then auth-walls events) |
+| ht-comfy-openai (titan)  | 2026-05-16 | openai          | 6 · 4 · 14 · 0            | `/v1/images/edits` returns 500 on empty body (cloud#113)              |
+| ht-comfy-openai (titan)  | 2026-05-16 | ht              | 10 · 4 · 19 · 0           | `/v1/3d/generations` + `/v1/videos` PASS Phase A; segmentations ❌    |
+| lile-daemon (`:8768`)    | 2026-05-16 | openai          | 3 · 5 · 12 · 3            | chat-only; `/v1/models` 404 blocks Codex CLI discovery                |
+| lile-proxy (`:8766`)     | 2026-05-16 | openai          | 0 · 14 · 5 · 1            | 501 with `<!DOCTYPE HTML>` body — breaks canonical envelope contract  |
+| llama.cpp vanilla        | (fork CI)  | openai + ht     | (see fork run 25821142550) | `/v1/reranking` 501 with canonical OpenAI error envelope — HT-compat compliant |
+| vLLM                     | —          | —               | —                         | deployment URL pending                                                |
+| vllm-omni                | —          | —               | —                         | deployment URL pending                                                |
 
-Full reports + per-target findings at
-[`docs/baselines.md`](docs/baselines.md).
+Full reports + per-target writeups at
+[`docs/baselines.md`](docs/baselines.md). Raw JSON reports for the
+maintainer host are archived under `.probe-reports/` (gitignored).
 
 ## Docs
 
