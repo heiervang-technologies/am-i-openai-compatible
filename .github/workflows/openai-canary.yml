@@ -1,0 +1,85 @@
+# Nightly canary: probe api.openai.com unauth and archive the report.
+#
+# Catches catalog drift early — we noticed /v1/images/variations went
+# 404 only when we manually probed on 2026-05-16. With this canary,
+# the report would have flipped within a day of OpenAI retiring it.
+#
+# Runs unauth (no OPENAI_API_KEY): every endpoint will 401 on Phase B
+# but Phase A grades route existence as PASS. Phase B is skipped to
+# keep the signal sharp — a 401 on /v1/chat/completions is expected,
+# a 404 is news.
+
+name: openai-canary
+
+on:
+  schedule:
+    # Daily at 11:00 UTC — early enough that EU-day-shift sees the
+    # report, late enough that any overnight US-side OpenAI deploys
+    # have settled.
+    - cron: "0 11 * * *"
+  workflow_dispatch: # allow manual runs from the Actions tab
+
+permissions:
+  contents: read
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install aioc from this checkout
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e .
+
+      - name: Probe api.openai.com (unauth, Phase A only)
+        run: |
+          aioc probe https://api.openai.com \
+            --name openai-api-canary \
+            --skip-phase-b \
+            --timeout 8 \
+            --report openai-canary.json
+
+      - name: Summarize counts
+        run: |
+          python - <<'PY'
+          import json, os, sys
+          events = json.loads(open("openai-canary.json").read())
+          counts = {"PASS": 0, "WARN": 0, "FAIL": 0, "SKIP": 0}
+          for e in events:
+              counts[e.get("status", "")] = counts.get(e.get("status", ""), 0) + 1
+          fails = [e for e in events if e.get("status") == "FAIL"]
+          summary = " · ".join(f"{k}={v}" for k, v in counts.items())
+          print(f"openai-canary: {summary}")
+          step = os.environ.get("GITHUB_STEP_SUMMARY")
+          if step:
+              with open(step, "a") as f:
+                  f.write(f"## OpenAI canary — {summary}\n\n")
+                  if fails:
+                      f.write("### FAIL rows (potential catalog drift)\n\n")
+                      f.write("| Endpoint | HTTP | Detail |\n")
+                      f.write("|----------|------|--------|\n")
+                      for e in fails:
+                          d = (e.get("detail") or "")[:80].replace("|", "\\|")
+                          f.write(f"| `{e['endpoint']}` | {e.get('http_status', 0)} | {d} |\n")
+                  else:
+                      f.write("No FAILs — every cataloged endpoint still routes on api.openai.com.\n")
+          # Surface FAILs as a non-blocking annotation; don't fail the
+          # canary on them — drift is information, not a build error.
+          for e in fails:
+              print(f"::warning::catalog drift candidate: {e['endpoint']} → {e.get('detail', '')[:120]}")
+          PY
+
+      - name: Upload report artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: openai-canary-${{ github.run_id }}
+          path: openai-canary.json
+          retention-days: 90
