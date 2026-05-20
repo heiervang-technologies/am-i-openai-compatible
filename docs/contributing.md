@@ -62,6 +62,8 @@ build --strict` — broken links fail the build.
 
 ## Releasing
 
-Versioning follows semver. Tag `v0.x.y` on `main`, the
-`release` workflow pushes to PyPI and the `docs` workflow pushes a
-fresh build to GitHub Pages.
+Versioning follows semver. Tag `v0.x.y` on `main`; the `docs`
+workflow pushes a fresh build to GitHub Pages. There is no PyPI
+release right now — consumers install via
+`pip install git+https://github.com/heiervang-technologies/am-i-openai-compatible.git@v0.x.y`,
+and the GitHub Action's `aioc-version` input resolves the same way.

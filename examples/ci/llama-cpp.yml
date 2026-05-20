@@ -47,16 +47,15 @@ jobs:
           exit 1
 
       - name: aioc probe — OpenAI compat
-        uses: heiervang-technologies/am-i-openai-compatible@v0.2.0-pre1
+        uses: heiervang-technologies/am-i-openai-compatible@v0.3.1
         with:
           base-url: http://127.0.0.1:8080
           name: llama.cpp-${{ github.sha }}
           fail-on: FAIL
-          # Pin the Python package to the same git ref so the action and
-          # the catalog/probe code move together until the release lands
-          # on PyPI. After that, drop this line to take the latest
-          # published catalog.
-          aioc-version: "git+https://github.com/heiervang-technologies/am-i-openai-compatible.git@v0.2.0-pre1"
+          # aioc isn't on PyPI; the action installs from git. Pin the
+          # python package to the same tag as the action to keep the
+          # catalog and probe code in lockstep.
+          aioc-version: "git+https://github.com/heiervang-technologies/am-i-openai-compatible.git@v0.3.1"
 
       - name: aioc probe — HT compat (discovery)
         # Same server, HT-extension catalog. Under --profile ht, a 404
@@ -70,14 +69,14 @@ jobs:
         # Reminder on fail-on semantics: FAIL fails on FAIL only; WARN
         # fails on WARN-or-FAIL (stricter); none never fails. There is
         # no "downgrade FAIL to WARN" mode — pick discovery or strict.
-        uses: heiervang-technologies/am-i-openai-compatible@v0.2.0-pre1
+        uses: heiervang-technologies/am-i-openai-compatible@v0.3.1
         with:
           base-url: http://127.0.0.1:8080
           name: llama.cpp-${{ github.sha }}-ht
           profile: ht
           fail-on: none
           report-path: aioc-report-ht.json
-          aioc-version: "git+https://github.com/heiervang-technologies/am-i-openai-compatible.git@v0.2.0-pre1"
+          aioc-version: "git+https://github.com/heiervang-technologies/am-i-openai-compatible.git@v0.3.1"
 
       - name: Stop llama-server
         if: always()

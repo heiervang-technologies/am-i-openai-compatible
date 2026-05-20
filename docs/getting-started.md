@@ -2,17 +2,26 @@
 
 ## Install
 
+Not on PyPI yet — install straight from this repo:
+
 ```bash
-pip install am-i-openai-compatible
+# Latest main:
+pip install git+https://github.com/heiervang-technologies/am-i-openai-compatible.git
+
+# Pin to a tag (recommended for CI):
+pip install git+https://github.com/heiervang-technologies/am-i-openai-compatible.git@v0.3.1
 ```
 
-Or, from a checkout:
+Or, from a checkout (recommended for development):
 
 ```bash
 git clone https://github.com/heiervang-technologies/am-i-openai-compatible.git
 cd am-i-openai-compatible
 pip install -e ".[dev]"
 ```
+
+Requires Python ≥ 3.10. A PyPI release isn't planned right now; if you
+need one, open an issue.
 
 That registers two console scripts:
 

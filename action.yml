@@ -14,9 +14,9 @@ inputs:
     required: false
     default: ""
   aioc-version:
-    description: "Version of am-i-openai-compatible to install. 'latest' (PyPI), a specific PyPI version like '0.1.1', or a pip-installable spec starting with 'git+' (e.g. 'git+https://github.com/heiervang-technologies/am-i-openai-compatible.git@v0.1.1-pre1') to pin against a tag before a PyPI release."
+    description: "Which build to install. Not on PyPI yet — accepts 'main' (latest commit on the default branch) or any pip-installable git spec, e.g. 'git+https://github.com/heiervang-technologies/am-i-openai-compatible.git@v0.3.1' to pin to a tag. Default 'main'."
     required: false
-    default: "latest"
+    default: "main"
   python-version:
     description: "Python version for the probe runtime."
     required: false
@@ -93,15 +93,18 @@ runs:
       run: |
         python -m pip install --upgrade pip
         case "$AIOC_VERSION" in
-          latest)
-            python -m pip install --upgrade am-i-openai-compatible
+          main)
+            python -m pip install "git+https://github.com/heiervang-technologies/am-i-openai-compatible.git"
             ;;
           git+*)
-            # Pre-release / development pin: pip-installable git spec.
             python -m pip install "$AIOC_VERSION"
             ;;
+          v*|[0-9]*)
+            # Bare tag/version like 'v0.3.1' or '0.3.1' — pin to the tag.
+            python -m pip install "git+https://github.com/heiervang-technologies/am-i-openai-compatible.git@$AIOC_VERSION"
+            ;;
           *)
-            python -m pip install "am-i-openai-compatible==$AIOC_VERSION"
+            python -m pip install "$AIOC_VERSION"
             ;;
         esac
         aioc --help >/dev/null

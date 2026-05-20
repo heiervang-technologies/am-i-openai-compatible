@@ -28,11 +28,33 @@ OpenAI doesn't pin yet (promptable segmentation à la SAM3, omni-modal
 chat, reranking, layered image generation, audio extraction).
 See [`docs/spec/ht-compat.md`](docs/spec/ht-compat.md).
 
+## Install
+
+Not on PyPI yet — install straight from this repo:
+
+```bash
+# Latest main:
+pip install git+https://github.com/heiervang-technologies/am-i-openai-compatible.git
+
+# Pin to a tag (recommended for CI):
+pip install git+https://github.com/heiervang-technologies/am-i-openai-compatible.git@v0.3.1
+
+# Or clone for a hackable checkout:
+git clone https://github.com/heiervang-technologies/am-i-openai-compatible.git
+cd am-i-openai-compatible
+pip install -e .
+```
+
+The composite GitHub Action takes the same git ref via its
+`aioc-version` input, e.g.
+`aioc-version: "git+https://github.com/heiervang-technologies/am-i-openai-compatible.git@v0.3.1"`.
+
+Requires Python ≥ 3.10. A PyPI release isn't planned right now; if you
+need one, open an issue.
+
 ## Quickstart
 
 ```bash
-pip install am-i-openai-compatible
-
 aioc probe http://localhost:8080 --name llama.cpp
 aioc probe https://api.openai.com --name openai
 aioc gap --monolith probe-llama.json --cluster probe-openai.json
