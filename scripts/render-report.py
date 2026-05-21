@@ -22,11 +22,14 @@ from pathlib import Path
 GLYPH = {"PASS": "●", "WARN": "▲", "FAIL": "✖", "SKIP": "○"}
 COLOR = {"PASS": "32", "WARN": "33", "FAIL": "31", "SKIP": "90"}
 _RANK = {
-    ("A", "FAIL"): 0, ("B", "FAIL"): 0,
-    ("A", "WARN"): 1, ("B", "WARN"): 1,
+    ("A", "FAIL"): 0,
+    ("B", "FAIL"): 0,
+    ("A", "WARN"): 1,
+    ("B", "WARN"): 1,
     ("B", "PASS"): 2,
     ("A", "PASS"): 3,
-    ("A", "SKIP"): 4, ("B", "SKIP"): 4,
+    ("A", "SKIP"): 4,
+    ("B", "SKIP"): 4,
 }
 
 
