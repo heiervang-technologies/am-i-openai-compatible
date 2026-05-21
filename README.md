@@ -6,6 +6,12 @@
 [![Docs](https://img.shields.io/badge/docs-mkdocs--material-blue)](https://heiervang-technologies.github.io/am-i-openai-compatible/)
 [![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 
+![aioc demo](docs/assets/aioc-demo.gif)
+
+> *aioc probe against the ht-llama.cpp fork: 27 endpoints graded
+> in 0.2s — including HT-compat extensions like `/v1/reranking` and
+> `/v1/chat/completions[omni]`. Source: [`docs/assets/aioc-demo.tape`](docs/assets/aioc-demo.tape).*
+
 The term "OpenAI-compatible" gets used so loosely it's nearly worthless.
 Every implementation — llama.cpp, vLLM, Ollama, LM Studio, TabbyAPI,
 SGLang, MLC, comfy-openai shims, you name it — picks its own subset of
