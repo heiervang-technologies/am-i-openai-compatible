@@ -205,6 +205,64 @@ with the canonical OpenAI error envelope** when booted without
 
 ---
 
+## ht-llama.cpp (lithium) · multi-model router
+
+**Probed:** 2026-05-21 · `aioc 0.3.0`, `ht` profile, against a live
+deploy on lithium (`/app/llama-server --models-preset llama-router.ini
+--models-max 1`). Tunneled to the maintainer host over SSH to the pod
+IP `10.42.5.233:8080`. 12 models served (text + embedding + omni).
+
+| | Phase A only | Phase A + B |
+|---|---|---|
+| PASS | 10 | 3 |
+| WARN | 2 | 2 |
+| FAIL | 15 | 22 |
+| Duration | 0.3s | 71s |
+| Report | `.probe-reports/lithium-ht-llama-cpp-2026-05-21-phaseA.json` | `.probe-reports/lithium-ht-llama-cpp-2026-05-21.json` |
+
+**Headline finding:** Phase A on this fork PASSes `/v1/reranking` and
+`/v1/chat/completions[omni]` — both HT-compat extensions wired up
+beyond vanilla llama.cpp. **But under Phase B with the default 12s
+budget, six chat/embedding rows time out** because the router
+autoloads the target model on first request and cold-load on this
+hardware exceeds 12s.
+
+**Warm-budget re-probe** (90s timeout, chat/embedding/rerank/omni
+only, report `.probe-reports/lithium-ht-llama-cpp-2026-05-21-warm.json`):
+
+| Endpoint | Status | Detail |
+|---|---|---|
+| `/v1/chat/completions` | ● PASS | shape ok |
+| `/v1/chat/completions[stream]` | ● PASS | chunks=4, [DONE]=True |
+| `/v1/embeddings` | ▲ 501 (graded FAIL) | capability gated; needs `--embeddings` boot flag |
+| `/v1/reranking` | ▲ 501 (graded FAIL) | capability gated; needs `--reranking` boot flag |
+| `/v1/chat/completions[omni]` | ✖ FAIL | `choices[0].message.audio.data` missing — partial omni impl |
+
+**Real findings worth filing:**
+
+1. **Phase B grades canonical 501 as FAIL, Phase A grades it as
+   WARN.** That's an inconsistency — both should grade
+   501-with-envelope as WARN ("permanently gated; not your bug").
+   Tracked alongside #2's 503 semantics discussion.
+2. **Omni signature gap on this fork.** `/v1/chat/completions[omni]`
+   returns 200 but without `audio.data` in the message — i.e. text
+   half of the omni contract works, audio output not yet wired. The
+   `vllm-omni` baseline (TBD) is the canonical reference here.
+3. **`/v1/models` already exposes per-model modality metadata** via
+   `architecture.input_modalities` / `architecture.output_modalities`
+   plus a `status.value` field (`loaded` / `unloaded`). That's the
+   de-facto answer to #2's "per-model capability advertisement" item
+   for the modality axis. A formal `x_ht_compat` array (covering
+   capabilities like `reranking`, `omni`, `embedding`) would still be
+   additive.
+
+The `aioc-demo.gif` in the README is the Phase A render of this
+target — its green PASSes on `/v1/reranking` and
+`/v1/chat/completions[omni]` represent route-existence only; Phase B
+shows where the surface meets reality.
+
+---
+
 ## vLLM · `~/ht/forks/ht-vllm`
 
 **Not yet probed** in this round — no live deployment URL available

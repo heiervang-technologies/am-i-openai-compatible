@@ -128,6 +128,8 @@ by `aioc probe` (catalog: 27 rows, `aioc 0.3.0`).
 | lile-daemon (`:8768`)    | 2026-05-16 | openai          | 3 · 5 · 12 · 3            | chat-only; `/v1/models` 404 blocks Codex CLI discovery                |
 | lile-proxy (`:8766`)     | 2026-05-16 | openai          | 0 · 14 · 5 · 1            | 501 with `<!DOCTYPE HTML>` body — breaks canonical envelope contract  |
 | llama.cpp vanilla        | (fork CI)  | openai + ht     | (see fork run 25821142550) | `/v1/reranking` 501 with canonical OpenAI error envelope — HT-compat compliant |
+| ht-llama.cpp (lithium)   | 2026-05-21 | ht (Phase A)    | 10 · 2 · 15 · 10          | router-mode multi-model; `/v1/reranking` + `[omni]` routes exist      |
+| ht-llama.cpp (lithium)   | 2026-05-21 | ht (Phase A+B)  | 3 · 2 · 22 · 0            | cold-load > 12s timeout; omni returns no `audio.data`; 501s on rerank/embed |
 | vLLM                     | —          | —               | —                         | deployment URL pending                                                |
 | vllm-omni                | —          | —               | —                         | deployment URL pending                                                |
 
