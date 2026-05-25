@@ -500,6 +500,8 @@ class Prober:
             r = self.client.get(self.base + path)
         except httpx.HTTPError as e:
             return "FAIL", f"http error: {e}", 0
+        if r.status_code == 501:
+            return "WARN", f"501 — {_server_error_message(r)}", 501
         if r.status_code != 200:
             return "FAIL", f"GET → {r.status_code}", r.status_code
         try:
@@ -534,6 +536,11 @@ class Prober:
             # bytes are spec-correct, but right-now-not-available. WARN
             # mirrors how Phase A grades 501.
             return "WARN", f"503 — {_server_error_message(r)}", 503
+        if r.status_code == 501:
+            # Permanent capability gate — endpoint is wired but
+            # config-disabled (e.g. boot without --reranking). Same
+            # grading as Phase A; not the server's bug to retry.
+            return "WARN", f"501 — {_server_error_message(r)}", 501
         if not (200 <= r.status_code < 300):
             return "FAIL", f"POST → {r.status_code}: {r.text[:120]}", r.status_code
         # 2xx — including 202 Accepted for async job submission. Shape
@@ -568,6 +575,9 @@ class Prober:
                 if status == 503:
                     r.read()  # so httpx populates r.text for the error helper
                     return ("WARN", f"503 — {_server_error_message(r)}", 503)
+                if status == 501:
+                    r.read()
+                    return ("WARN", f"501 — {_server_error_message(r)}", 501)
                 if status != 200 or "text/event-stream" not in ct:
                     return ("FAIL", f"POST stream → {status} ct={ct!r}", status)
                 for line in r.iter_lines():

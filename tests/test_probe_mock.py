@@ -168,6 +168,48 @@ def test_phase_b_chat_passes_with_valid_shape():
 
 
 @respx.mock
+def test_phase_b_501_with_envelope_grades_warn():
+    """Phase B must mirror Phase A on canonical 501 — endpoint is wired
+    but config-disabled (e.g. boot without --reranking). FAIL would
+    misleadingly flag a deliberate, documented capability gate as a
+    server bug. Surfaced by the 2026-05-21 lithium ht-llama.cpp
+    baseline; aligns with the v1.0 spec's 501-with-envelope rule.
+    """
+    respx.get(f"{BASE}/v1/models").mock(
+        return_value=httpx.Response(
+            200,
+            json={"data": [{"id": "rerank-1", "owned_by": "test", "tags": ["rerank"]}]},
+        )
+    )
+
+    def _reranking_responder(request):
+        body = json.loads(request.content or b"{}")
+        if not body:
+            # Phase A — empty POST. Validation reply means "route exists".
+            return httpx.Response(400, json={"error": {"message": "no model"}})
+        return httpx.Response(
+            501,
+            json={
+                "error": {
+                    "message": "This server does not support reranking. Start it with --reranking",
+                    "code": 501,
+                    "type": "not_supported_error",
+                }
+            },
+        )
+
+    respx.post(f"{BASE}/v1/reranking").mock(side_effect=_reranking_responder)
+
+    p = Prober(BASE, "test", profile="ht", endpoints_filter=r"^/v1/reranking$")
+    events = p.run()
+    rows = _events_by_endpoint(events, "/v1/reranking")
+    phase_b = next((e for e in rows if e.phase == "B"), None)
+    assert phase_b is not None, [(e.phase, e.status, e.detail) for e in rows]
+    assert phase_b.status == "WARN", (phase_b.status, phase_b.detail)
+    assert "Start it with --reranking" in phase_b.detail
+
+
+@respx.mock
 def test_phase_b_chat_fails_when_required_keys_missing():
     respx.get(f"{BASE}/v1/models").mock(
         return_value=httpx.Response(200, json={"data": [{"id": "chat-1"}]})
