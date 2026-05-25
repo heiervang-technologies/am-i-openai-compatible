@@ -47,6 +47,6 @@ Sleep 2500ms
 
 Type "# render the report"
 Enter
-Type "python scripts/render-report.py report.json"
+Type "aioc render report.json"
 Enter
 Sleep 5000ms

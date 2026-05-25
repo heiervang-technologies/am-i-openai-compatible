@@ -13,6 +13,10 @@ Subcommands:
         Print the canonical endpoint catalog (the spec the prober checks
         against) as a table or JSON.
 
+    aioc render REPORT [--limit N] [--no-color]
+        Render a probe JSON report as a colored ANSI table. One row per
+        endpoint (FAIL > WARN > Phase B PASS > Phase A PASS > SKIP).
+
     aioc version
         Print version and exit.
 """
@@ -85,6 +89,14 @@ def _cmd_gap(args: argparse.Namespace) -> int:
     return gap.main(forwarded)
 
 
+def _cmd_render(args: argparse.Namespace) -> int:
+    from . import render as render_mod
+
+    use_color = None if not args.no_color else False
+    sys.stdout.write(render_mod.render_file(args.report, limit=args.limit, use_color=use_color))
+    return 0
+
+
 def build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(
         prog="aioc",
@@ -150,6 +162,21 @@ def build_parser() -> argparse.ArgumentParser:
     ss.add_argument("--group", help="restrict to one group (chat/audio/...)")
     ss.add_argument("--json", action="store_true", help="emit JSON instead of a table")
     ss.set_defaults(func=_cmd_spec)
+
+    sr = sub.add_parser("render", help="render a probe JSON report as a colored table")
+    sr.add_argument("report", help="path to aioc probe JSON report")
+    sr.add_argument(
+        "--limit",
+        type=int,
+        default=0,
+        help="cap rows shown (0 = all)",
+    )
+    sr.add_argument(
+        "--no-color",
+        action="store_true",
+        help="strip ANSI colors (forced off in non-TTY by default)",
+    )
+    sr.set_defaults(func=_cmd_render)
 
     return p
 
