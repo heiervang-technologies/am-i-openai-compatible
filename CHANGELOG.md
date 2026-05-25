@@ -6,7 +6,43 @@ versions follow [SemVer](https://semver.org/).
 
 ## [Unreleased]
 
-### Probe-target baselines (2026-05-16)
+### Added
+
+- `aioc render REPORT.json` — colored 4-glyph table renderer for
+  probe reports. Promoted from the ad-hoc `scripts/render-report.py`
+  into a proper CLI subcommand. Reads a probe JSON, picks the
+  best-priority event per endpoint (FAIL > WARN > Phase B PASS >
+  Phase A PASS > SKIP), and emits an ANSI-coloured table. `--limit
+  N` truncates; `--no-color` for non-TTY pipes. Used to render the
+  README demo gif. (Commit `561e99a`.)
+
+### Fixed
+
+- **Phase B now grades a `501 not implemented` response with the
+  canonical OpenAI error envelope as WARN**, matching how Phase A
+  has always graded it. Previously the asymmetry caused a server
+  that correctly capability-gated (e.g. `llama-server` booted
+  without `--embeddings`) to FAIL on Phase B while only WARNing on
+  Phase A. Applied at all three sites: `_phase_b_post`,
+  `_phase_b_get`, `_phase_b_sse`. Regression test in
+  `tests/test_probe_mock.py::test_phase_b_501_with_envelope_grades_warn`.
+  (Commit `5eea1c2`.)
+- Docs: corrected misleading `/v1/embeddings 404 FAIL` example in
+  `docs/getting-started.md` — `kind="optional"` rows can only WARN
+  on a missing capability, never FAIL. (Closes #11; commit
+  `ba48cee`.)
+
+### CI
+
+- Bumped all GitHub Action pins to Node-24-compatible majors ahead
+  of GitHub's 2026-06-02 Node-20 forced-cutover:
+  `actions/checkout@v6`, `actions/setup-python@v6`,
+  `actions/upload-artifact@v7`, `actions/configure-pages@v6`,
+  `actions/upload-pages-artifact@v5`, `actions/deploy-pages@v5`.
+  Third-party action pins in `action.yml` are SHA-pinned to v6.2.0
+  / v7.0.1 respectively. (Commit `af210e5`.)
+
+### Probe-target baselines (2026-05-16 / 2026-05-21)
 
 - `docs/baselines.md` — per-target findings against OpenAI
   (`api.openai.com`), `titan-comfy-openai`, the `lile-daemon`, and
@@ -14,6 +50,9 @@ versions follow [SemVer](https://semver.org/).
   (gitignored). Surfaced two real server bugs on `titan-comfy-openai`
   (filed to `heiervang-technologies/cloud#113`) and three Codex-CLI
   compat gaps on lile (notified to the agi/lile maintainer).
+- Added ht-llama.cpp (lithium) multi-model router baseline
+  (2026-05-21). Surfaced the Phase B 501 grading bug now fixed
+  above. (Commit `63cdc12`.)
 - Probe-target inventory tracked in #10.
 
 ## [0.3.1] — 2026-05-16
