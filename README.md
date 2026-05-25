@@ -71,23 +71,38 @@ aioc gap --monolith probe-llama.json --cluster probe-openai.json
 aioc probe http://localhost:8080 --profile ht --name llama.cpp-ht
 ```
 
-Output is a per-endpoint pass / warn / fail / skip table:
+`aioc probe` writes a flat JSON list to `--report` and prints a
+one-line summary; `aioc render` reads that JSON back as a per-endpoint
+table:
 
 ```
-Service     Endpoint                                Status   Detail
-─────────   ─────────────────────────────────────   ──────   ──────────────────────
-llama.cpp   /v1/models                              ● PASS   23 models
-llama.cpp   /v1/chat/completions                    ● PASS   finish_reason=length
-llama.cpp   /v1/chat/completions [stream]           ● PASS   9 chunks · DONE
-llama.cpp   /v1/models/{id}                         ▲ WARN   404 — list only
-llama.cpp   /v1/responses                           ○ SKIP   not implemented
-llama.cpp   /v1/audio/speech                        ✖ FAIL   404
+$ aioc probe http://lile-daemon:8080 --name lile-daemon --report lile.json
+probe 'lile-daemon': 23 events in 4.8s  ·  FAIL=12  PASS=3  SKIP=3  WARN=5
+report: lile.json
+
+$ aioc render lile.json --limit 6
+Endpoint                        Status    Detail
+──────────────────────────────  ──────    ────────────────────────────
+/v1/models                      ✖ FAIL    404 — endpoint absent
+/v1/models/{model}              ✖ FAIL    404 — endpoint absent
+/v1/chat/completions            ● PASS    400 (route exists)
+/v1/chat/completions[stream]    ● PASS    400 (route exists)
+/v1/chat/completions[logprobs]  ● PASS    400 (route exists)
+/v1/completions                 ✖ FAIL    404 — endpoint absent
 ```
 
-* `PASS` — endpoint exists, body is valid against the spec
-* `WARN` — endpoint works but deviates (documented; many do)
-* `FAIL` — endpoint missing or schema invalid
-* `SKIP` — endpoint intentionally absent or server unreachable
+`render` picks one event per endpoint by priority: FAIL > WARN > Phase
+B PASS > Phase A PASS > SKIP. Status semantics:
+
+* `PASS` — Phase A: route exists (any non-404 reply). Phase B: response
+  body validates against the spec.
+* `WARN` — capability-gated (404 on an `optional` row, or 501 with the
+  canonical OpenAI error envelope). Server is honest about what it
+  doesn't serve.
+* `FAIL` — 404 on a `core` row, schema mismatch on Phase B, or a 404
+  on an HT-compat `ours` row under `--profile ht`.
+* `SKIP` — Phase A unreachable, or Phase B with no model of the
+  required kind discoverable from `/v1/models`.
 
 ## What the prober does
 

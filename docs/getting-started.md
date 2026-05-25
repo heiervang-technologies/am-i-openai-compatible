@@ -33,58 +33,73 @@ am-i-openai-compatible --version   # same thing, longer name
 ## Probe a server
 
 ```bash
-aioc probe http://localhost:8080 --name llama.cpp
-```
-
-Output:
-
-```
-[A] /v1/models                         GET    200  PASS  23 models
-[A] /v1/chat/completions               POST   400  PASS  exists (validation reply)
-[B] /v1/chat/completions               POST   200  PASS  finish_reason=length
-[B] /v1/chat/completions [stream]      POST   200  PASS  9 chunks · DONE
-[A] /v1/embeddings                     POST   501  WARN  capability gated — boot with --embeddings
-[A] /v1/audio/speech                   POST   404  WARN  capability not offered
-...
-Summary: 18 PASS, 3 WARN, 0 FAIL, 6 SKIP  →  COMPLIANT WITH WARNINGS
-```
-
-`/v1/embeddings` and `/v1/audio/*` are `kind="optional"` — a 404 or 501
-on them grades WARN, not FAIL. They're capability-gated (boot flag,
-missing model), not non-compliance. FAIL is reserved for catalog rows
-that should always route (the chat / models surface) or for Phase B
-signature mismatches against a server that does serve the kind.
-
-Save the report:
-
-```bash
 aioc probe http://localhost:8080 --name llama.cpp --report llama.json
 ```
 
-The JSON shape:
+`aioc probe` writes a flat JSON event list to `--report` and prints a
+one-line summary on stdout:
+
+```
+probe 'llama.cpp': 27 events in 5.4s  ·  FAIL=1  PASS=20  SKIP=4  WARN=2
+report: llama.json
+```
+
+For a per-endpoint table view, pipe the report through `aioc render`:
+
+```bash
+aioc render llama.json
+```
+
+```
+Endpoint                        Status    Detail
+──────────────────────────────  ──────    ────────────────────────────
+/v1/models                      ● PASS    shape ok
+/v1/chat/completions            ● PASS    shape ok
+/v1/chat/completions[stream]    ● PASS    chunks=9, [DONE]=True
+/v1/embeddings                  ▲ WARN    501 — endpoint is disabled
+/v1/audio/speech                ▲ WARN    404 — capability not offered
+/v1/audio/transcriptions        ○ SKIP    no model of kind 'asr'
+...
+```
+
+`render` picks one event per endpoint by priority: FAIL > WARN > Phase
+B PASS > Phase A PASS > SKIP. `/v1/embeddings` and `/v1/audio/*` are
+`kind="optional"` — a 404 or 501 on them grades WARN, not FAIL.
+They're capability-gated (boot flag, missing model), not
+non-compliance. FAIL is reserved for `kind="core"` rows that should
+always route (chat / models) or for Phase B schema mismatches against
+a server that does serve the kind.
+
+The JSON report itself is a flat list of event objects — one per
+phase per endpoint, in catalog order:
 
 ```json
-{
-  "service": "llama.cpp",
-  "base_url": "http://localhost:8080",
-  "started_at": "2026-05-04T18:30:00Z",
-  "finished_at": "2026-05-04T18:30:14Z",
-  "events": [
-    {
-      "service": "llama.cpp",
-      "endpoint": "/v1/chat/completions",
-      "phase": "B",
-      "status": "PASS",
-      "detail": "finish_reason=length",
-      "method": "POST",
-      "http_status": 200,
-      "kind": "core",
-      "group": "chat"
-    },
-    ...
-  ],
-  "summary": {"PASS": 18, "WARN": 2, "FAIL": 1, "SKIP": 6}
-}
+[
+  {
+    "service": "llama.cpp",
+    "endpoint": "/v1/chat/completions",
+    "phase": "A",
+    "status": "PASS",
+    "detail": "400 (route exists)",
+    "method": "POST",
+    "http_status": 400,
+    "kind": "core",
+    "group": "chat",
+    "profile": "openai"
+  },
+  {
+    "service": "llama.cpp",
+    "endpoint": "/v1/chat/completions",
+    "phase": "B",
+    "status": "PASS",
+    "detail": "shape ok",
+    "method": "POST",
+    "http_status": 200,
+    "kind": "core",
+    "group": "chat",
+    "profile": "openai"
+  }
+]
 ```
 
 ## Compare two reports
