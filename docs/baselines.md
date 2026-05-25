@@ -234,16 +234,21 @@ only, report `.probe-reports/lithium-ht-llama-cpp-2026-05-21-warm.json`):
 |---|---|---|
 | `/v1/chat/completions` | ● PASS | shape ok |
 | `/v1/chat/completions[stream]` | ● PASS | chunks=4, [DONE]=True |
-| `/v1/embeddings` | ▲ 501 (graded FAIL) | capability gated; needs `--embeddings` boot flag |
-| `/v1/reranking` | ▲ 501 (graded FAIL) | capability gated; needs `--reranking` boot flag |
+| `/v1/embeddings` | ▲ 501 WARN | capability gated; needs `--embeddings` boot flag |
+| `/v1/reranking` | ▲ 501 WARN | capability gated; needs `--reranking` boot flag |
 | `/v1/chat/completions[omni]` | ✖ FAIL | `choices[0].message.audio.data` missing — partial omni impl |
+
+(The original 2026-05-21 run graded those two 501 rows as FAIL — Phase
+B's grading was stricter than Phase A's at the time. That asymmetry
+was fixed in commit `5eea1c2`; re-running today produces the WARN rows
+shown above.)
 
 **Real findings worth filing:**
 
-1. **Phase B grades canonical 501 as FAIL, Phase A grades it as
-   WARN.** That's an inconsistency — both should grade
-   501-with-envelope as WARN ("permanently gated; not your bug").
-   Tracked alongside #2's 503 semantics discussion.
+1. ~~**Phase B grades canonical 501 as FAIL, Phase A grades it as
+   WARN.**~~ Fixed in `5eea1c2`: Phase B `_phase_b_post / _get / _sse`
+   now grade a 501-with-envelope as WARN, matching Phase A. New
+   regression test in `tests/test_probe_mock.py::test_phase_b_501_with_envelope_grades_warn`.
 2. **Omni signature gap on this fork.** `/v1/chat/completions[omni]`
    returns 200 but without `audio.data` in the message — i.e. text
    half of the omni contract works, audio output not yet wired. The

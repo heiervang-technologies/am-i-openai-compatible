@@ -43,11 +43,17 @@ Output:
 [A] /v1/chat/completions               POST   400  PASS  exists (validation reply)
 [B] /v1/chat/completions               POST   200  PASS  finish_reason=length
 [B] /v1/chat/completions [stream]      POST   200  PASS  9 chunks · DONE
-[B] /v1/embeddings                     POST   404  FAIL  endpoint missing
-[A] /v1/audio/speech                   POST   404  SKIP  ext: not implemented
+[A] /v1/embeddings                     POST   501  WARN  capability gated — boot with --embeddings
+[A] /v1/audio/speech                   POST   404  WARN  capability not offered
 ...
-Summary: 18 PASS, 2 WARN, 1 FAIL, 6 SKIP  →  COMPLIANT WITH WARNINGS
+Summary: 18 PASS, 3 WARN, 0 FAIL, 6 SKIP  →  COMPLIANT WITH WARNINGS
 ```
+
+`/v1/embeddings` and `/v1/audio/*` are `kind="optional"` — a 404 or 501
+on them grades WARN, not FAIL. They're capability-gated (boot flag,
+missing model), not non-compliance. FAIL is reserved for catalog rows
+that should always route (the chat / models surface) or for Phase B
+signature mismatches against a server that does serve the kind.
 
 Save the report:
 
