@@ -59,6 +59,15 @@ class Endpoint:
     # go through Prober._phase_b_ws instead of the http POST/GET paths.
     ws_init_event: dict | None = None  # event to send after WS upgrade
     ws_expect_event: str = ""  # event "type" we expect back to count as PASS
+    # Content-degeneracy guard: catches the 200-OK-with-empty-content bug
+    # class (e.g. ht-llama.cpp dflash speculative-decode emitting all-NaN
+    # logits on jinja chat-completions while completions worked — mission
+    # m-20260527-103737-36364b). For non-streaming, `content_path` names the
+    # dotted path Phase B reads. For streaming, the value is reassembled
+    # from `choices.0.delta.content` across chunks. min_content_length=0
+    # disables the check (legacy behaviour for endpoints we don't gate).
+    content_path: str = ""
+    min_content_length: int = 0
 
 
 # ---------------------------------------------------------------------------
@@ -97,6 +106,8 @@ ENDPOINTS: list[Endpoint] = [
         },
         expects=("choices.0.message.content", "choices.0.finish_reason"),
         requires_model_kind="chat",
+        content_path="choices.0.message.content",
+        min_content_length=1,
     ),
     Endpoint(
         path="/v1/chat/completions[stream]",
@@ -113,6 +124,7 @@ ENDPOINTS: list[Endpoint] = [
         expects="sse",
         requires_model_kind="chat",
         notes="separate row so a missing-stream regression is visible",
+        min_content_length=1,
     ),
     Endpoint(
         path="/v1/chat/completions[logprobs]",
@@ -139,6 +151,8 @@ ENDPOINTS: list[Endpoint] = [
         expects=("choices.0.text",),
         requires_model_kind="chat",
         notes="legacy text completion — many newer servers omit it",
+        content_path="choices.0.text",
+        min_content_length=1,
     ),
     Endpoint(
         path="/v1/responses",
