@@ -47,17 +47,24 @@ profile these rows are SKIPped.
 ## Versioning
 
 HT-compat uses semantic-version-style strings. The current version is
-**HT-compat-1.0**. Servers SHOULD advertise compliance with:
+**HT-compat-1.1**. Servers SHOULD advertise compliance with:
 
 ```
-X-HT-Compat: 1.0
+X-HT-Compat: 1.1
 ```
 
 on every response from an HT endpoint. Clients MAY send the same
 header on requests to declare which version they expect.
 
-A v1.1 may add endpoints (v1 of the spec lists candidates below) but
-will not remove or break v1.0 signatures.
+**v1.1 (this revision)** adds three BERT-style endpoints for encoder
+models: `/v1/qa` (extractive question answering), `/v1/ner` (token
+classification / named-entity recognition), and `/v1/classifications`
+(sequence classification, supervised + zero-shot). All v1.0 endpoints
+are unchanged. A v1.0 server is automatically v1.1-compliant on the
+subset it implements; servers MAY advertise either version.
+
+A future minor revision may add endpoints (the spec lists candidates
+below) but will not remove or break v1.0/v1.1 signatures.
 
 ## Error envelope (required)
 
@@ -648,10 +655,222 @@ shape on both `composite` and `layers[]`.
 
 ---
 
-## Deferred to v1.1
+### `/v1/qa` — extractive question answering (v1.1)
+
+**Aligned with:** Hugging Face `transformers` `question-answering`
+pipeline (and the matching HF Inference API task). HT-compat keeps
+the HF input nesting (`{context, question}` under `input`) and the
+HF response field names (`answer`, `score`, `start`, `end`), then
+wraps the array in the OpenAI-style `{id, model, ..., usage}`
+envelope already used by `/v1/reranking` for consistency across
+HT-compat rows.
+
+**Request**
+
+```http
+POST /v1/qa
+Content-Type: application/json
+```
+
+```json
+{
+  "model": "deepset/roberta-base-squad2",
+  "input": {
+    "context": "Mount Everest is the highest mountain above sea level.",
+    "question": "What is the highest mountain?"
+  },
+  "top_k": 1
+}
+```
+
+| Field | Type | Required | Notes |
+|---|---|---|---|
+| `model` | string | yes | model id, from `/v1/models` |
+| `input.context` | string | yes | passage the answer must come from |
+| `input.question` | string | yes | the question to answer |
+| `top_k` | integer | no | return at most this many answers (HF default: 1) |
+| `max_answer_len` | integer | no | maximum answer span length in tokens (HF default: 15) |
+| `handle_impossible_answer` | boolean | no | when `true`, may return an empty `answers` array if the model judges the question unanswerable from the context (SQuAD 2.0 convention; HF default: `false`) |
+
+**Response**
+
+```json
+{
+  "id": "qa-...",
+  "model": "deepset/roberta-base-squad2",
+  "answers": [
+    {"answer": "Mount Everest", "score": 0.98, "start": 0, "end": 13}
+  ],
+  "usage": {"total_tokens": 24}
+}
+```
+
+`answers` is sorted by `score` descending. `start`/`end` are
+**character offsets into `input.context`** (UTF-8 codepoint
+indices, not byte offsets) and MUST satisfy
+`context[start:end] == answers[i].answer`. `score` is in `[0, 1]`.
+
+When `handle_impossible_answer: true` and the model judges the
+question unanswerable, `answers` MUST be an empty array rather
+than a fabricated low-confidence span.
+
+`id` is implementation-defined (the `qa-...` prefix is illustrative).
+
+---
+
+### `/v1/ner` — token classification / named-entity recognition (v1.1)
+
+**Aligned with:** Hugging Face `transformers` `token-classification`
+pipeline (and the matching HF Inference API task). The HF
+`aggregation_strategy` parameter is load-bearing — it switches the
+per-entity shape between `entity` (no aggregation, one row per
+subword token) and `entity_group` (aggregated to whole words or
+spans). HT-compat exposes both shapes via the same parameter and
+preserves HF's field names.
+
+**Request**
+
+```http
+POST /v1/ner
+Content-Type: application/json
+```
+
+```json
+{
+  "model": "dslim/bert-base-NER",
+  "input": "Hugging Face Inc. is based in New York.",
+  "aggregation_strategy": "simple"
+}
+```
+
+| Field | Type | Required | Notes |
+|---|---|---|---|
+| `model` | string | yes | model id, from `/v1/models` |
+| `input` | string | yes | text to extract entities from |
+| `aggregation_strategy` | string | no | one of `"none"`, `"simple"`, `"first"`, `"average"`, `"max"` (HF default: `"simple"`). Controls whether per-token (`"none"`) or per-span (others) rows are returned |
+| `ignore_labels` | array of string | no | label values to omit from the response (HF default: `["O"]` — the BIO outside token) |
+| `stride` | integer | no | overlap between chunks when the model truncates long input (HF default: 0) |
+
+**Response (`aggregation_strategy` ≠ `"none"`)**
+
+```json
+{
+  "id": "ner-...",
+  "model": "dslim/bert-base-NER",
+  "entities": [
+    {"entity_group": "ORG", "score": 0.99, "word": "Hugging Face Inc.", "start": 0, "end": 17},
+    {"entity_group": "LOC", "score": 0.99, "word": "New York", "start": 30, "end": 38}
+  ],
+  "usage": {"total_tokens": 12}
+}
+```
+
+**Response (`aggregation_strategy: "none"`)**
+
+Per-token rows: `entity_group` is replaced by `entity` carrying the
+raw BIO-prefixed tag the model emitted.
+
+```json
+{
+  "entities": [
+    {"entity": "B-ORG", "score": 0.99, "word": "Hugging", "start": 0, "end": 7},
+    {"entity": "I-ORG", "score": 0.98, "word": "Face",    "start": 8, "end": 12}
+  ]
+}
+```
+
+`start`/`end` are character offsets into `input`. `entities` is
+returned in document order (NOT score-sorted — NER scores are often
+near-identical and document order is the actionable layout).
+Servers using `entity_group` MUST NOT emit `B-`/`I-` BIO prefixes;
+those are collapsed by the aggregation. Servers using `entity` MAY
+emit BIO-prefixed labels verbatim from the underlying model.
+
+---
+
+### `/v1/classifications` — sequence classification (supervised + zero-shot) (v1.1)
+
+**Aligned with:** Hugging Face `transformers` `text-classification`
+and `zero-shot-classification` pipelines, and TEI's `/predict`
+endpoint. Both shapes return `[{label, score}]` arrays; the only
+difference is whether `candidate_labels` is supplied. HT-compat
+unifies them under one endpoint with one response shape — the
+request differentiates by the presence of `candidate_labels`.
+
+**Request (supervised — use the model's trained labels)**
+
+```http
+POST /v1/classifications
+Content-Type: application/json
+```
+
+```json
+{
+  "model": "SamLowe/roberta-base-go_emotions",
+  "input": "I like you."
+}
+```
+
+**Request (zero-shot — score against `candidate_labels`)**
+
+```json
+{
+  "model": "facebook/bart-large-mnli",
+  "input": "The new lens has excellent low-light performance.",
+  "candidate_labels": ["positive", "negative", "neutral"],
+  "multi_label": false
+}
+```
+
+| Field | Type | Required | Notes |
+|---|---|---|---|
+| `model` | string | yes | model id, from `/v1/models` |
+| `input` | string | yes | text to classify |
+| `candidate_labels` | array of string | no | zero-shot mode. Absent → use the model's trained label set |
+| `multi_label` | boolean | no | zero-shot only: if `true`, labels are scored independently (each in `[0,1]`); if `false` (default), scores form a softmax over `candidate_labels` |
+| `hypothesis_template` | string | no | zero-shot only: template used to expand each `candidate_label` into an NLI hypothesis (HF default: `"This example is {}."`) |
+| `top_k` | integer | no | return at most this many labels (default: all) |
+
+**Response**
+
+```json
+{
+  "id": "classify-...",
+  "model": "facebook/bart-large-mnli",
+  "classifications": [
+    {"label": "positive", "score": 0.94},
+    {"label": "neutral",  "score": 0.05},
+    {"label": "negative", "score": 0.01}
+  ],
+  "usage": {"total_tokens": 18}
+}
+```
+
+`classifications` is sorted by `score` descending. Scores are in
+`[0, 1]`.
+
+---
+
+**Common rules for v1.1 endpoints**
+
+When a server is config-gated for `/v1/qa`, `/v1/ner`, or
+`/v1/classifications` (e.g. a generative runtime without an encoder
+backend loaded), it MUST return 501 with the canonical OpenAI error
+envelope — never 404 (the route exists, the capability doesn't).
+
+Multi-input batching is **out of scope for v1.1**. Servers MUST
+reject array-valued `input` on these three endpoints with 400 +
+`{error.code: "batch_not_supported"}`. The HF and TEI batching
+conventions diverge (HF uses `inputs: [...]`, TEI uses
+`inputs: [[...]]`); pinning a HT-compat shape requires more reference
+implementations than currently exist. Likely v1.2 work.
+
+---
+
+## Deferred to v1.2
 
 The following are model-class gaps the catalog knows about but does
-not pin in v1.0. Sketches here are non-normative.
+not pin in v1.1. Sketches here are non-normative.
 
 **New endpoints**
 
@@ -667,7 +886,7 @@ not pin in v1.0. Sketches here are non-normative.
 * **`/v1/realtime`** — speech-to-speech via WebSocket. Aligns with
   OpenAI's Realtime API once that signature stabilizes.
 
-**Refinements to existing v1.0 endpoints**
+**Refinements to existing v1.x endpoints**
 
 * **Per-model capability advertisement.** Each entry in `/v1/models`
   gains an optional `x_ht_compat` field (e.g. `["reranking", "omni"]`)
