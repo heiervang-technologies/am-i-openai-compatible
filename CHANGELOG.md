@@ -6,6 +6,30 @@ versions follow [SemVer](https://semver.org/).
 
 ## [Unreleased]
 
+### HT-compat 1.1 — encoder-only BERT-style tasks
+
+- Three new `kind="ours"` endpoints, gated under `--profile ht`:
+  `/v1/qa` (extractive question answering), `/v1/ner` (token
+  classification / NER, with `aggregation_strategy` parameter),
+  `/v1/classifications` (supervised + zero-shot sequence
+  classification, switched by presence of `candidate_labels`).
+  Cherry-picked from HF `transformers` `question-answering`,
+  `token-classification`, `text-classification`, and
+  `zero-shot-classification` pipelines and TEI's `/predict`
+  endpoint — wrapped in the OpenAI-style `{id, model, ..., usage}`
+  envelope already in use on `/v1/reranking`. Multi-input batching
+  is explicitly out of scope for v1.1 (HF and TEI disagree on the
+  wire shape).
+- `Endpoint.requires_model_kind` gains `qa`, `ner`, `classify`
+  values; `_classify_kind` learns the common HF-checkpoint naming
+  patterns (`squad`, `conll`, `mnli`, `go_emotions`, `-classifier`,
+  `zero-shot`).
+- Spec doc bumped HT-compat 1.0 → 1.1. v1.0 servers are
+  automatically v1.1-compliant on the subset they implement —
+  v1.1 is purely additive.
+- 4 new respx tests (3 happy-path + 1 kind-classifier coverage).
+  Compat matrix gains a v1.1 section + TEI/HF reference column.
+
 ### Added
 
 - `aioc render REPORT.json` — colored 4-glyph table renderer for
