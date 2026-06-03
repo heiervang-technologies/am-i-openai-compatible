@@ -147,8 +147,8 @@ def run_three_shots(client: httpx.Client, base: str, preset: str, shotter):
     prompt_a = f"[Q-{n1}] please say hi"
     prompt_b = f"[Q-{n2}] please say hi"
     schedule = [
-        ("cold",     prompt_a, True),
-        ("warm",     prompt_a, True),
+        ("cold", prompt_a, True),
+        ("warm", prompt_a, True),
         ("no-cache", prompt_b, False),
     ]
     out = []
@@ -170,13 +170,7 @@ def render_table(matrix: dict, presets: list[dict]) -> str:
     head = f"| {'preset':<46} | jinja | dflash | "
     head += " | ".join(f"{c[0]:<14}" for c in cols)
     head += " |"
-    sep = (
-        "|"
-        + "-" * 48
-        + "|-------|--------|"
-        + "|".join("-" * 16 for _ in cols)
-        + "|"
-    )
+    sep = "|" + "-" * 48 + "|-------|--------|" + "|".join("-" * 16 for _ in cols) + "|"
     out = [head, sep]
     for p in presets:
         row = f"| `{p['id']:<44}` | {'yes' if p['jinja'] else 'no':<5} | {'yes' if p['dflash'] else 'no':<6} |"
@@ -247,7 +241,11 @@ def main() -> int:
                 },
                 "presets": presets,
                 "min_content_len": MIN_CONTENT_LEN,
-                "shot_sequence": ["cold-cache_prompt=true", "warm-cache_prompt=true", "no-cache_prompt=false"],
+                "shot_sequence": [
+                    "cold-cache_prompt=true",
+                    "warm-cache_prompt=true",
+                    "no-cache_prompt=false",
+                ],
             },
             indent=2,
         )

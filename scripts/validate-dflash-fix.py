@@ -124,9 +124,7 @@ def check_streaming(client: httpx.Client, base: str, model: str) -> CheckResult:
     nonce = secrets.token_hex(4)
     body = {
         "model": model,
-        "messages": [
-            {"role": "user", "content": f"[Q-{nonce}] reply with one short sentence."}
-        ],
+        "messages": [{"role": "user", "content": f"[Q-{nonce}] reply with one short sentence."}],
         "max_tokens": 64,
         "temperature": 0,
         "stream": True,
@@ -139,18 +137,12 @@ def check_streaming(client: httpx.Client, base: str, model: str) -> CheckResult:
     reasoning_total = 0
     final_finish: str | None = None
     try:
-        with client.stream(
-            "POST", f"{base}/v1/chat/completions", json=body, timeout=120
-        ) as r:
+        with client.stream("POST", f"{base}/v1/chat/completions", json=body, timeout=120) as r:
             if r.status_code != 200:
-                return CheckResult(
-                    "streaming", False, f"HTTP {r.status_code}: {r.read()[:120]!r}"
-                )
+                return CheckResult("streaming", False, f"HTTP {r.status_code}: {r.read()[:120]!r}")
             ct = r.headers.get("content-type", "")
             if "text/event-stream" not in ct:
-                return CheckResult(
-                    "streaming", False, f"unexpected content-type {ct!r}"
-                )
+                return CheckResult("streaming", False, f"unexpected content-type {ct!r}")
             for line in r.iter_lines():
                 if not line.startswith("data:"):
                     continue
@@ -177,9 +169,7 @@ def check_streaming(client: httpx.Client, base: str, model: str) -> CheckResult:
                 if fr is not None:
                     final_finish = fr
     except httpx.HTTPError as e:
-        return CheckResult(
-            "streaming", False, f"http error: {type(e).__name__}: {e}"
-        )
+        return CheckResult("streaming", False, f"http error: {type(e).__name__}: {e}")
     if chunks == 0:
         return CheckResult("streaming", False, "no SSE data chunks")
     if not saw_done:
@@ -238,16 +228,12 @@ def check_aioc_probe(base: str, model: str, report_path: Path) -> CheckResult:
     except subprocess.TimeoutExpired:
         return CheckResult("aioc probe", False, "subprocess timeout (300s)")
     if not report_path.exists():
-        return CheckResult(
-            "aioc probe", False, f"no report written; stderr={proc.stderr[:200]}"
-        )
+        return CheckResult("aioc probe", False, f"no report written; stderr={proc.stderr[:200]}")
     events = json.loads(report_path.read_text())
     fails = [e for e in events if e.get("status") == "FAIL"]
     warns = [e for e in events if e.get("status") == "WARN"]
     if fails:
-        snippet = "; ".join(
-            f"{e['endpoint']}[{e['phase']}] {e['detail']}" for e in fails[:3]
-        )
+        snippet = "; ".join(f"{e['endpoint']}[{e['phase']}] {e['detail']}" for e in fails[:3])
         return CheckResult(
             "aioc probe",
             False,

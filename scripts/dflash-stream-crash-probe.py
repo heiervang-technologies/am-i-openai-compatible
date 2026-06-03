@@ -33,7 +33,7 @@ import json
 import secrets
 import sys
 import time
-from dataclasses import asdict, dataclass, field
+from dataclasses import asdict, dataclass
 from pathlib import Path
 
 import httpx
@@ -75,7 +75,9 @@ class StreamCapture:
         return "OK"
 
 
-def capture_stream(client: httpx.Client, base: str, body: dict, timeout: float = 60.0) -> StreamCapture:
+def capture_stream(
+    client: httpx.Client, base: str, body: dict, timeout: float = 60.0
+) -> StreamCapture:
     """POST a streaming chat-completions request and capture
     everything observable, including post-crash state."""
     cap = StreamCapture()
@@ -83,9 +85,7 @@ def capture_stream(client: httpx.Client, base: str, body: dict, timeout: float =
     body["stream"] = True
     t0 = time.monotonic()
     try:
-        with client.stream(
-            "POST", f"{base}/v1/chat/completions", json=body, timeout=timeout
-        ) as r:
+        with client.stream("POST", f"{base}/v1/chat/completions", json=body, timeout=timeout) as r:
             cap.http_status = r.status_code
             cap.content_type = r.headers.get("content-type", "")
             if r.status_code != 200:
@@ -206,10 +206,13 @@ def main() -> int:
         ns = capture_nonstream(client, args.base_url, body, timeout=args.timeout)
         print(f"  nonstream: {json.dumps(ns)[:200]}", file=sys.stderr)
         st = capture_stream(client, args.base_url, body, timeout=args.timeout)
-        print(f"  stream:    verdict={st.verdict()} chunks={st.sse_chunks} "
-              f"content_len={st.content_total} reasoning_len={st.reasoning_total} "
-              f"finish={st.finish_reason!r} saw_done={st.saw_done} "
-              f"http={st.http_status} ct={st.content_type!r}", file=sys.stderr)
+        print(
+            f"  stream:    verdict={st.verdict()} chunks={st.sse_chunks} "
+            f"content_len={st.content_total} reasoning_len={st.reasoning_total} "
+            f"finish={st.finish_reason!r} saw_done={st.saw_done} "
+            f"http={st.http_status} ct={st.content_type!r}",
+            file=sys.stderr,
+        )
         if st.body_text_if_error:
             print(f"             error body: {st.body_text_if_error[:200]!r}", file=sys.stderr)
         if st.last_chunk_raw:
@@ -219,22 +222,24 @@ def main() -> int:
         # ---- 2. Minimization sweep — vary one axis at a time ----
         print("\n[2] minimization sweep (stream:true only)", file=sys.stderr)
         sweep_cases = [
-            ("max_tokens=4",   base_body(args.model,   4, prompt_short, True,  True)),
-            ("max_tokens=16",  base_body(args.model,  16, prompt_short, True,  True)),
-            ("max_tokens=64",  base_body(args.model,  64, prompt_short, True,  True)),
-            ("max_tokens=256", base_body(args.model, 256, prompt_short, True,  True)),
-            ("prompt=1ch",     base_body(args.model,  64, "?",          True,  True)),
-            ("prompt=256ch",   base_body(args.model,  64, ("[Q-%s] " % nonce) + "x" * 240, True, True)),
-            ("cache=false",    base_body(args.model,  64, prompt_short, False, True)),
-            ("usage=false",    base_body(args.model,  64, prompt_short, True,  False)),
-            ("usage=omit",     base_body(args.model,  64, prompt_short, True,  None)),
+            ("max_tokens=4", base_body(args.model, 4, prompt_short, True, True)),
+            ("max_tokens=16", base_body(args.model, 16, prompt_short, True, True)),
+            ("max_tokens=64", base_body(args.model, 64, prompt_short, True, True)),
+            ("max_tokens=256", base_body(args.model, 256, prompt_short, True, True)),
+            ("prompt=1ch", base_body(args.model, 64, "?", True, True)),
+            ("prompt=256ch", base_body(args.model, 64, f"[Q-{nonce}] " + "x" * 240, True, True)),
+            ("cache=false", base_body(args.model, 64, prompt_short, False, True)),
+            ("usage=false", base_body(args.model, 64, prompt_short, True, False)),
+            ("usage=omit", base_body(args.model, 64, prompt_short, True, None)),
         ]
         for label, b in sweep_cases:
             cap = capture_stream(client, args.base_url, b, timeout=args.timeout)
-            print(f"  {label:<18} → {cap.verdict():<10} chunks={cap.sse_chunks:<3} "
-                  f"content={cap.content_total:<4} finish={cap.finish_reason!r:<10} "
-                  f"http={cap.http_status} elapsed={cap.elapsed_s:.1f}s",
-                  file=sys.stderr)
+            print(
+                f"  {label:<18} → {cap.verdict():<10} chunks={cap.sse_chunks:<3} "
+                f"content={cap.content_total:<4} finish={cap.finish_reason!r:<10} "
+                f"http={cap.http_status} elapsed={cap.elapsed_s:.1f}s",
+                file=sys.stderr,
+            )
             findings["minimization"].append({"case": label, "body": b, "capture": asdict(cap)})
     finally:
         client.close()
@@ -248,16 +253,21 @@ def main() -> int:
     ns_ok = diff["nonstream"].get("content_len", 0) > 0
     st_verdict = StreamCapture(**diff["stream"]).verdict()
     print(
-        f"\n[summary] nonstream={'OK' if ns_ok else 'BROKEN'}  "
-        f"stream={st_verdict}",
+        f"\n[summary] nonstream={'OK' if ns_ok else 'BROKEN'}  stream={st_verdict}",
         file=sys.stderr,
     )
     if ns_ok and st_verdict != "OK":
         print("  → confirms stream-vs-non-stream differential", file=sys.stderr)
-        crashing = [c for c in findings["minimization"] if c["capture"]["error"] or c["capture"]["http_status"] >= 500]
+        crashing = [
+            c
+            for c in findings["minimization"]
+            if c["capture"]["error"] or c["capture"]["http_status"] >= 500
+        ]
         if crashing:
-            sizes = [(c["case"], c["body"]["max_tokens"], len(c["body"]["messages"][0]["content"]))
-                     for c in crashing]
+            sizes = [
+                (c["case"], c["body"]["max_tokens"], len(c["body"]["messages"][0]["content"]))
+                for c in crashing
+            ]
             print(f"  → {len(crashing)} crashing case(s) in sweep", file=sys.stderr)
             for s in sizes:
                 print(f"     - {s[0]} max_tokens={s[1]} prompt_chars={s[2]}", file=sys.stderr)
