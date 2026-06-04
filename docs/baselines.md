@@ -85,16 +85,33 @@ Capability-gated endpoints (`/v1/audio/speech`,
 `/v1/audio/transcriptions`, `/v1/embeddings`) honestly 404 → WARN. No
 chat — this pod doesn't pretend.
 
-**Two real bugs found:**
+**Two real bugs found** (root-caused by snoop-kube on 2026-06-04 via
+[`cloud#113`](https://github.com/heiervang-technologies/cloud/issues/113)):
 
-* **`/v1/images/edits` returns `500 Internal Server Error`** on an
-  empty multipart body where 4xx is the OpenAI canonical response.
-  Worth a ticket to snoop-kube — looks like missing input-validation
-  before the worker dispatch.
-* **`/v1/images/generations` times out** at the 15s probe budget.
-  Either slow first-request warmup or the row's tiny synthetic-image
-  body trips the ComfyUI workflow. Probably benign in production, but
-  the probe can't grade it.
+* **`/v1/images/edits` returns `500 Internal Server Error`** on a
+  minimal multipart body in **0.099s** — fast enough to rule out
+  ComfyUI ever being reached. The earlier hypothesis ("missing
+  input-validation before the worker dispatch") was misleading: the
+  request *correctly* fails Pydantic validation, but FastAPI's default
+  `request_validation_exception_handler` then crashes inside
+  `jsonable_encoder(exc.errors())` on a `UnicodeDecodeError` at byte
+  `0x89` (the PNG magic byte) — the handler tries to JSON-encode the
+  raw uploaded image bytes that Pydantic stashed in the error's
+  `input` field. Fix is a custom `RequestValidationError` handler
+  that sanitises binary `input` values before encoding. The real
+  underlying validation failure (likely a `flux2-klein`-isn't-an-edit-model
+  check) is currently masked by the crash and will surface as a clean
+  4xx once the handler is patched.
+* **`/v1/images/generations` was speculated to be a 15s probe-budget
+  timeout** — also wrong. Re-probed with a 150s budget by snoop:
+  **HTTP 502 after 67.9s** with body `ComfyUI run failed`, traceback
+  showing a `mat1 mat2 shapes cannot be multiplied (1024×15360 and
+  7680×3072)` from `comfy/ldm/flux/model.py` — i.e. a **flux2-klein-
+  specific CLIP / text-encoder dimension mismatch** in that workflow
+  template (wrong CLIP wired in). 100% fail rate on flux2-klein;
+  `z-image-turbo` generations work end-to-end the same day, so the
+  pipeline itself is healthy. Fix is in the flux2-klein workflow
+  template, not the OpenAI surface.
 
 ### `ht` profile
 
