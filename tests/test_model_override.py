@@ -1,10 +1,10 @@
 """Tests for the --model override and Phase B 503 grading (v0.2.1).
 
-Grounded in the real-world failure mode surfaced by ht-llama.cpp-dev
-probing a router-mode deployment (titan): `/v1/models[0]` arbitrarily
-returned a 24B model the autoload couldn't satisfy, so every Phase B
-chat probe failed with 500 — even though the endpoint was healthy and
-a 4B sibling on the same server worked.
+Grounded in a real-world failure mode on router-mode multi-model
+deployments: `/v1/models[0]` may arbitrarily return a model the
+on-demand autoload can't satisfy, so every Phase B chat probe fails
+with 500 even though the endpoint is healthy and a sibling model on
+the same server would work.
 
 The fixes:
   1. `--model NAME` pins the model id for Phase B bodies, falling back
@@ -196,10 +196,9 @@ def test_no_model_override_keeps_default_selection():
 
 @respx.mock
 def test_phase_b_503_with_envelope_warns_with_message():
-    """The exact failure mode from titan: server returns 500 (will be
-    503 after ht-llama.cpp#41 lands) with the canonical envelope when
-    the autoload-on-demand router can't bring a model up. Endpoint is
-    healthy; the model just isn't available right now. WARN, not FAIL.
+    """An autoload-on-demand router returns 503 with the canonical
+    envelope when it can't bring a model up. Endpoint is healthy; the
+    model just isn't available right now. WARN, not FAIL.
     """
     respx.get(f"{BASE}/v1/models").mock(
         return_value=httpx.Response(200, json={"data": [{"id": "chat-1"}]})

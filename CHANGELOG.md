@@ -81,15 +81,8 @@ versions follow [SemVer](https://semver.org/).
 ### Probe-target baselines (2026-05-16 / 2026-05-21)
 
 - `docs/baselines.md` — per-target findings against OpenAI
-  (`api.openai.com`), `titan-comfy-openai`, the `lile-daemon`, and
-  the `lile-proxy`. Reports archived under `.probe-reports/`
-  (gitignored). Surfaced two real server bugs on `titan-comfy-openai`
-  (filed to `heiervang-technologies/cloud#113`) and three Codex-CLI
-  compat gaps on lile (notified to the agi/lile maintainer).
-- Added ht-llama.cpp (lithium) multi-model router baseline
-  (2026-05-21). Surfaced the Phase B 501 grading bug now fixed
-  above. (Commit `63cdc12`.)
-- Probe-target inventory tracked in #10.
+  (`api.openai.com`) as the public reference baseline. Probe-target
+  inventory tracked in #10.
 
 ## [0.3.1] — 2026-05-16
 

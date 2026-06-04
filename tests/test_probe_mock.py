@@ -170,10 +170,10 @@ def test_phase_b_chat_passes_with_valid_shape():
 @respx.mock
 def test_phase_b_501_with_envelope_grades_warn():
     """Phase B must mirror Phase A on canonical 501 — endpoint is wired
-    but config-disabled (e.g. boot without --reranking). FAIL would
-    misleadingly flag a deliberate, documented capability gate as a
-    server bug. Surfaced by the 2026-05-21 lithium ht-llama.cpp
-    baseline; aligns with the v1.0 spec's 501-with-envelope rule.
+    but config-disabled (e.g. llama-server booted without `--reranking`).
+    FAIL would misleadingly flag a deliberate, documented capability
+    gate as a server bug. Aligns with the v1.0 spec's 501-with-envelope
+    rule.
     """
     respx.get(f"{BASE}/v1/models").mock(
         return_value=httpx.Response(

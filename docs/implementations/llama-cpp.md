@@ -82,10 +82,9 @@ aioc probe http://localhost:8080 --name llama.cpp
 aioc probe http://localhost:8080 --name llamaswap
 
 # In a Kubernetes setup with NodePort
-aioc probe http://192.168.8.158:30184 --name titan-llm
+aioc probe http://<node-ip>:<port> --name llama-cpp-k8s
 ```
 
 ## See also
 
 * upstream: <https://github.com/ggerganov/llama.cpp>
-* heiervang-technologies fork: <https://github.com/heiervang-technologies/ht-llama.cpp>

@@ -8,9 +8,10 @@
 
 ![aioc demo](docs/assets/aioc-demo.gif)
 
-> *aioc probe against the ht-llama.cpp fork: 27 endpoints graded
-> in 0.2s — including HT-compat extensions like `/v1/reranking` and
-> `/v1/chat/completions[omni]`. Source: [`docs/assets/aioc-demo.tape`](docs/assets/aioc-demo.tape).*
+> *aioc probe against a custom llama.cpp build with HT-compat
+> extensions: 27 endpoints graded in 0.2s — including
+> `/v1/reranking` and `/v1/chat/completions[omni]`. Source:
+> [`docs/assets/aioc-demo.tape`](docs/assets/aioc-demo.tape).*
 
 The term "OpenAI-compatible" gets used so loosely it's nearly worthless.
 Every implementation — llama.cpp, vLLM, Ollama, LM Studio, TabbyAPI,
@@ -80,11 +81,11 @@ one-line summary; `aioc render` reads that JSON back as a per-endpoint
 table:
 
 ```
-$ aioc probe http://lile-daemon:8080 --name lile-daemon --report lile.json
-probe 'lile-daemon': 23 events in 4.8s  ·  FAIL=12  PASS=3  SKIP=3  WARN=5
-report: lile.json
+$ aioc probe http://chat-server:8080 --name chat-server --report report.json
+probe 'chat-server': 23 events in 4.8s  ·  FAIL=12  PASS=3  SKIP=3  WARN=5
+report: report.json
 
-$ aioc render lile.json --limit 6
+$ aioc render report.json --limit 6
 Endpoint                        Status    Detail
 ──────────────────────────────  ──────    ────────────────────────────
 /v1/models                      ✖ FAIL    404 — endpoint absent
@@ -137,24 +138,16 @@ behavior, you update one file.
 ## Baselines
 
 What real OpenAI-compatible servers actually implement, as observed
-by `aioc probe` (catalog: 27 rows, `aioc 0.3.0`).
+by `aioc probe`.
 
 | Target                   | Probed     | Profile         | PASS · WARN · FAIL · SKIP | Notable finding                                                       |
 | ------------------------ | ---------- | --------------- | ------------------------- | --------------------------------------------------------------------- |
 | OpenAI `api.openai.com`  | 2026-05-16 | openai (unauth) | 20 · 0 · 4 · 14           | `/v1/realtime` accepts unauth WS upgrade (101 then auth-walls events) |
-| ht-comfy-openai (titan)  | 2026-05-16 | openai          | 6 · 4 · 14 · 0            | `/v1/images/edits` returns 500 on empty body (cloud#113)              |
-| ht-comfy-openai (titan)  | 2026-05-16 | ht              | 10 · 4 · 19 · 0           | `/v1/3d/generations` + `/v1/videos` PASS Phase A; segmentations ❌    |
-| lile-daemon (`:8768`)    | 2026-05-16 | openai          | 3 · 5 · 12 · 3            | chat-only; `/v1/models` 404 blocks Codex CLI discovery                |
-| lile-proxy (`:8766`)     | 2026-05-16 | openai          | 0 · 14 · 5 · 1            | 501 with `<!DOCTYPE HTML>` body — breaks canonical envelope contract  |
-| llama.cpp vanilla        | (fork CI)  | openai + ht     | (see fork run 25821142550) | `/v1/reranking` 501 with canonical OpenAI error envelope — HT-compat compliant |
-| ht-llama.cpp (lithium)   | 2026-05-21 | ht (Phase A)    | 10 · 2 · 15 · 10          | router-mode multi-model; `/v1/reranking` + `[omni]` routes exist      |
-| ht-llama.cpp (lithium)   | 2026-05-21 | ht (Phase A+B)  | 3 · 2 · 22 · 0            | cold-load > 12s timeout; omni returns no `audio.data`; 501s on rerank/embed |
-| vLLM                     | —          | —               | —                         | deployment URL pending                                                |
-| vllm-omni                | —          | —               | —                         | deployment URL pending                                                |
 
-Full reports + per-target writeups at
-[`docs/baselines.md`](docs/baselines.md). Raw JSON reports for the
-maintainer host are archived under `.probe-reports/` (gitignored).
+The public reference baseline lives at
+[`docs/baselines.md`](docs/baselines.md); contribute additional
+baselines for OSS servers (llama.cpp, vLLM, Ollama, TabbyAPI, …) via
+PR using the same section shape.
 
 ## Docs
 
