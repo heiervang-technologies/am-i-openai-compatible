@@ -80,6 +80,7 @@ nav:
   - HT-compat:
     - Spec: spec/ht-compat.md
     - Matrix: ht-compatibility-matrix.md
+    - Beyond OpenAI-compat (survey): beyond-openai-compat.md
   - Implementations:
     - Overview: implementations/index.md
     - OpenAI (reference): implementations/openai.md
