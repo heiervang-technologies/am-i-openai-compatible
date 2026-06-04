@@ -232,6 +232,124 @@ def test_phase_b_chat_fails_when_required_keys_missing():
 
 
 @respx.mock
+def test_phase_b_chat_fails_on_empty_content():
+    """Catches the 200-OK-but-empty-content bug class — a real failure
+    mode where the server returns a well-shaped response with
+    `finish_reason="stop"` but zero content tokens (seen with
+    speculative-decoding KV-reuse regressions producing all-NaN logits,
+    and quantization corner cases that collapse the output
+    distribution). A shape check that only verifies key existence
+    would PASS this, since `choices[0].message.content` exists — it's
+    just the empty string. With content_path + min_content_length=1
+    on the chat row, the response now grades FAIL.
+    """
+    respx.get(f"{BASE}/v1/models").mock(
+        return_value=httpx.Response(200, json={"data": [{"id": "chat-1"}]})
+    )
+    respx.post(f"{BASE}/v1/chat/completions").mock(
+        return_value=httpx.Response(
+            200,
+            json={
+                "id": "x",
+                "object": "chat.completion",
+                "created": 1,
+                "model": "chat-1",
+                "choices": [
+                    {
+                        "index": 0,
+                        "message": {"role": "assistant", "content": ""},
+                        "finish_reason": "stop",
+                    }
+                ],
+            },
+        )
+    )
+
+    p = Prober(BASE, "test", endpoints_filter=r"^/v1/chat/completions$")
+    events = p.run()
+    rows = _events_by_endpoint(events, "/v1/chat/completions")
+    phase_b = next((e for e in rows if e.phase == "B"), None)
+    assert phase_b is not None, [(e.phase, e.status, e.detail) for e in rows]
+    assert phase_b.status == "FAIL", (phase_b.status, phase_b.detail)
+    assert "empty content" in phase_b.detail
+
+
+@respx.mock
+@pytest.mark.parametrize(
+    "label,message_obj,expected_substr",
+    [
+        # `content: null` — a real shape we've seen on misconfigured servers
+        # (json-null instead of empty string). Pre-fix collapsed to "missing
+        # content"; differentiated diagnostic surfaces the actual fault.
+        ("null_content", {"role": "assistant", "content": None}, "null content"),
+        # `content` key absent altogether. Reads as "missing key" (vs the
+        # empty-string case which reads as "empty content").
+        ("absent_content_key", {"role": "assistant"}, "missing key"),
+        # `content` resolved to a non-string. Some servers default to 0 or
+        # [] when they have nothing to say. Diagnostic includes the type.
+        ("non_string_content", {"role": "assistant", "content": 0}, "non-string content"),
+    ],
+)
+def test_phase_b_chat_differentiates_content_failure_modes(label, message_obj, expected_substr):
+    """One detail string per failure shape — collapsing them all into
+    'missing content' misled debugging on real server-bug reports."""
+    respx.get(f"{BASE}/v1/models").mock(
+        return_value=httpx.Response(200, json={"data": [{"id": "chat-1"}]})
+    )
+    respx.post(f"{BASE}/v1/chat/completions").mock(
+        return_value=httpx.Response(
+            200,
+            json={
+                "id": "x",
+                "object": "chat.completion",
+                "model": "chat-1",
+                "choices": [{"index": 0, "message": message_obj, "finish_reason": "stop"}],
+            },
+        )
+    )
+    p = Prober(BASE, "test", endpoints_filter=r"^/v1/chat/completions$")
+    events = p.run()
+    rows = _events_by_endpoint(events, "/v1/chat/completions")
+    phase_b = next((e for e in rows if e.phase == "B"), None)
+    assert phase_b is not None, [(e.phase, e.status, e.detail) for e in rows]
+    assert phase_b.status == "FAIL", (label, phase_b.status, phase_b.detail)
+    assert expected_substr in phase_b.detail, (label, phase_b.detail)
+
+
+@respx.mock
+def test_phase_b_sse_stream_fails_on_empty_delta_content():
+    """Streaming variant of the empty-content bug: chunks ARE emitted
+    (the SSE framing works) and [DONE] is sent, but every chunk's
+    `choices[0].delta.content` is empty. Today: PASS. After
+    min_content_length=1 on the stream row: FAIL.
+    """
+    respx.get(f"{BASE}/v1/models").mock(
+        return_value=httpx.Response(200, json={"data": [{"id": "chat-1"}]})
+    )
+    empty_chunk = json.dumps(
+        {
+            "id": "x",
+            "object": "chat.completion.chunk",
+            "created": 1,
+            "model": "chat-1",
+            "choices": [{"index": 0, "delta": {"content": ""}, "finish_reason": "stop"}],
+        }
+    )
+    body = f"data: {empty_chunk}\n\ndata: {empty_chunk}\n\ndata: [DONE]\n\n"
+    respx.post(f"{BASE}/v1/chat/completions").mock(
+        return_value=httpx.Response(200, headers={"content-type": "text/event-stream"}, text=body)
+    )
+
+    p = Prober(BASE, "test", endpoints_filter=r"chat/completions\[stream\]")
+    events = p.run()
+    rows = _events_by_endpoint(events, "/v1/chat/completions[stream]")
+    phase_b = next((e for e in rows if e.phase == "B"), None)
+    assert phase_b is not None, [(e.phase, e.status, e.detail) for e in rows]
+    assert phase_b.status == "FAIL", (phase_b.status, phase_b.detail)
+    assert "empty content" in phase_b.detail
+
+
+@respx.mock
 def test_phase_b_responses_compact_passes_with_output_array():
     """OpenAI's /v1/responses/compact (used by Codex CLI compact_remote.rs)
     returns {output: [...]} with one item of type='compaction'. Phase B

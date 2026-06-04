@@ -613,6 +613,7 @@ class Prober:
         body["stream"] = True
         chunks = 0
         saw_done = False
+        content_len = 0
         status = 0
         ct = ""
         try:
@@ -635,16 +636,25 @@ class Prober:
                         saw_done = True
                         break
                     try:
-                        json.loads(data)
+                        evt = json.loads(data)
                     except ValueError:
                         continue
                     chunks += 1
+                    ok, dc = _get_dotted(evt, "choices.0.delta.content")
+                    if ok and isinstance(dc, str):
+                        content_len += len(dc)
                     if chunks > 32:
                         break  # frugal — don't drain
         except httpx.HTTPError as e:
             return "FAIL", f"http error: {e}", status
         if chunks == 0:
             return "FAIL", "no SSE data chunks", status
+        if ep.min_content_length > 0 and content_len < ep.min_content_length:
+            return (
+                "FAIL",
+                f"empty content (chunks={chunks}, delta.content total len {content_len})",
+                status,
+            )
         return ("PASS" if saw_done else "WARN", f"chunks={chunks}, [DONE]={saw_done}", status)
 
     def _multipart_payload(self, ep: Endpoint, body: dict) -> tuple[dict, dict]:
@@ -669,6 +679,30 @@ class Prober:
                 missing.append(k)
         if missing:
             return ("FAIL", f"missing keys: {', '.join(missing)}", http_status)
+        if ep.content_path and ep.min_content_length > 0:
+            ok, val = _get_dotted(body, ep.content_path)
+            # Differentiate the three failure shapes — same gate, different
+            # diagnostic. Conflating them all as "missing content" misleads
+            # debugging: a null value at the path is a different server bug
+            # from the path being absent, and either is different from a
+            # non-string (e.g. some servers default to 0 / [] when they
+            # have nothing to say).
+            if not ok:
+                return ("FAIL", f"missing key {ep.content_path}", http_status)
+            if val is None:
+                return ("FAIL", f"null content at {ep.content_path}", http_status)
+            if not isinstance(val, str):
+                return (
+                    "FAIL",
+                    f"non-string content at {ep.content_path} (got {type(val).__name__})",
+                    http_status,
+                )
+            if len(val) < ep.min_content_length:
+                return (
+                    "FAIL",
+                    f"empty content (200 OK, {ep.content_path}=len {len(val)})",
+                    http_status,
+                )
         return "PASS", "shape ok", http_status
 
     # -- driver -------------------------------------------------------------

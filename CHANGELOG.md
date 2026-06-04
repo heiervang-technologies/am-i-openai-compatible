@@ -32,6 +32,18 @@ versions follow [SemVer](https://semver.org/).
 
 ### Added
 
+- **Empty-content grading** on `/v1/chat/completions`,
+  `/v1/chat/completions[stream]`, and `/v1/completions`. Catches the
+  200-OK-with-empty-content bug class: response shape is valid, the
+  required keys exist, `finish_reason="stop"`, but the model emits
+  zero useful tokens — a failure mode that shows up with
+  speculative-decoding KV-cache-reuse regressions that produce
+  all-NaN logits, and with quantization corner cases that silently
+  collapse the output distribution. New `Endpoint.content_path` +
+  `Endpoint.min_content_length` fields. Streaming path reassembles
+  `choices[0].delta.content` across chunks and applies the same gate.
+  Regression tests in `tests/test_probe_mock.py`.
+
 - `aioc render REPORT.json` — colored 4-glyph table renderer for
   probe reports. Promoted from the ad-hoc `scripts/render-report.py`
   into a proper CLI subcommand. Reads a probe JSON, picks the
