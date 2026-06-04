@@ -471,6 +471,57 @@ ENDPOINTS: list[Endpoint] = [
         requires_model_kind="3d",
         notes="HT-compat: TRELLIS/Hunyuan3D-style async 3D mesh generation (ComfyUI backend; image_url required, text-to-3D is v1.1)",
     ),
+    # --- HT-compat v1.1: BERT-style encoder tasks -----------------------
+    Endpoint(
+        path="/v1/qa",
+        method="POST",
+        group="qa",
+        kind="ours",
+        body={
+            "model": "{model}",
+            "input": {
+                "context": "Mount Everest is the highest mountain above sea level.",
+                "question": "What is the highest mountain?",
+            },
+            "top_k": 1,
+        },
+        expects=("answers.0.answer", "answers.0.score", "answers.0.start", "answers.0.end"),
+        requires_model_kind="qa",
+        notes="HT-compat v1.1: extractive QA aligned with HF question-answering pipeline",
+    ),
+    Endpoint(
+        path="/v1/ner",
+        method="POST",
+        group="ner",
+        kind="ours",
+        body={
+            "model": "{model}",
+            "input": "Hugging Face Inc. is based in New York.",
+            "aggregation_strategy": "simple",
+        },
+        expects=(
+            "entities.0.entity_group",
+            "entities.0.score",
+            "entities.0.word",
+            "entities.0.start",
+            "entities.0.end",
+        ),
+        requires_model_kind="ner",
+        notes="HT-compat v1.1: token classification aligned with HF token-classification pipeline (aggregation_strategy=simple by default)",
+    ),
+    Endpoint(
+        path="/v1/classifications",
+        method="POST",
+        group="classify",
+        kind="ours",
+        body={
+            "model": "{model}",
+            "input": "I like you.",
+        },
+        expects=("classifications.0.label", "classifications.0.score"),
+        requires_model_kind="classify",
+        notes="HT-compat v1.1: sequence + zero-shot classification (HF text-classification / zero-shot-classification, TEI /predict). Adding candidate_labels switches to zero-shot.",
+    ),
 ]
 
 

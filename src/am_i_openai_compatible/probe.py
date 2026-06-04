@@ -174,8 +174,53 @@ def _classify_kind(model_id: str) -> set[str]:
         kinds.add("segment")
     if "omni" in s or "minicpm-o" in s:
         kinds.add("omni")
+    # HT-compat v1.1: encoder-style tasks. NER / QA / sequence classification
+    # have no overlap with chat/embed model ids in practice — the common
+    # public checkpoints follow HF naming (squad, conll, mnli, go_emotions,
+    # bert-base-NER, distilbert-…-squad).
+    if "squad" in s or "-qa" in s or s.endswith("-qa") or "qa-" in s:
+        kinds.add("qa")
+    if "ner" in s or "conll" in s:
+        kinds.add("ner")
+    if any(
+        k in s
+        for k in (
+            "mnli",
+            "zero-shot",
+            "zeroshot",
+            "go_emotions",
+            "sentiment",
+            "-classifier",
+            "classification",
+        )
+    ):
+        kinds.add("classify")
     if not kinds:
         kinds.add("chat")
+    return kinds
+
+
+def _kinds_from_architecture(model: dict) -> set[str]:
+    """Read per-model capability hints from `/v1/models[i].architecture`.
+
+    ht-llama.cpp exposes `architecture.input_modalities` and
+    `architecture.output_modalities` per the OpenAI-shaped model
+    response. Use them as a second signal alongside lexical _classify_kind
+    so model ids that don't follow HF naming still get tagged correctly.
+    Surfaced by issue #15: `gemma-4-e4b` is omni-capable per
+    `input_modalities=['text', 'image', 'audio']` but had no `omni`
+    substring in the id, so it was falling back to plain `chat`.
+    """
+    arch = model.get("architecture") or {}
+    in_mods = arch.get("input_modalities") or []
+    out_mods = arch.get("output_modalities") or []
+    if not isinstance(in_mods, list) or not isinstance(out_mods, list):
+        return set()
+    kinds: set[str] = set()
+    if "audio" in in_mods or "audio" in out_mods:
+        # The omni HT-compat row requires audio I/O; either direction
+        # qualifies (input_audio + text_out is still omni per vLLM/Qwen2.5-Omni).
+        kinds.add("omni")
     return kinds
 
 
@@ -254,7 +299,9 @@ class Prober:
             mid = m.get("id")
             if not isinstance(mid, str):
                 continue
-            for k in _classify_kind(mid):
+            kinds = _classify_kind(mid)
+            kinds.update(_kinds_from_architecture(m))
+            for k in kinds:
                 self.models_by_kind.setdefault(k, []).append(mid)
 
     # -- model selection ----------------------------------------------------

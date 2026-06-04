@@ -286,6 +286,72 @@ def test_phase_b_chat_omni_passes_with_audio_in_message():
 
 
 @respx.mock
+def test_omni_detected_from_server_architecture_modalities():
+    """Regression for issue #15: a model id without an 'omni' substring
+    must still be picked for the omni endpoint when the server's
+    /v1/models[i].architecture.input_modalities or .output_modalities
+    list contains 'audio'. Lithium's gemma-4-e4b is the live example —
+    no 'omni' in the id but architecture.input_modalities is
+    ['text', 'image', 'audio'].
+    """
+    respx.get(f"{BASE}/v1/models").mock(
+        return_value=httpx.Response(
+            200,
+            json={
+                "data": [
+                    {
+                        "id": "gemma-4-e4b",
+                        "architecture": {
+                            "input_modalities": ["text", "image", "audio"],
+                            "output_modalities": ["text"],
+                        },
+                    },
+                ]
+            },
+        )
+    )
+    audio_b64 = base64.b64encode(b"\x00" * 100).decode()
+    respx.post(f"{BASE}/v1/chat/completions").mock(
+        return_value=httpx.Response(
+            200,
+            json={
+                "id": "chatcmpl-1",
+                "object": "chat.completion",
+                "model": "gemma-4-e4b",
+                "choices": [
+                    {
+                        "index": 0,
+                        "message": {
+                            "role": "assistant",
+                            "content": "ok",
+                            "audio": {
+                                "id": "audio-1",
+                                "data": audio_b64,
+                                "format": "wav",
+                                "expires_at": 0,
+                            },
+                        },
+                        "finish_reason": "stop",
+                    }
+                ],
+            },
+        )
+    )
+
+    p = Prober(BASE, "test", profile="ht", endpoints_filter=r"chat/completions\[omni\]")
+    events = p.run()
+    rows = _events_by_endpoint(events, "/v1/chat/completions[omni]")
+    # The signal we care about: Phase B did NOT SKIP with "no model of kind
+    # 'omni'", i.e. the model was picked despite having no 'omni' substring.
+    phase_b = next((e for e in rows if e.phase == "B"), None)
+    assert phase_b is not None, [(e.phase, e.status, e.detail) for e in rows]
+    assert phase_b.status != "SKIP" or "no model of kind 'omni'" not in phase_b.detail, (
+        phase_b.status,
+        phase_b.detail,
+    )
+
+
+@respx.mock
 def test_phase_b_3d_generations_passes_with_job_envelope():
     """Async job submission shape (mirrors /v1/videos): server returns
     {id, status} on POST; clients poll GET /v1/3d/generations/{id}
@@ -360,3 +426,122 @@ def test_phase_b_images_decompositions_passes_with_layered_shape():
     assert any(e.phase == "B" and e.status == "PASS" for e in rows), [
         (e.phase, e.status, e.detail) for e in rows
     ]
+
+
+# ---------------------------------------------------------------------------
+# HT-compat v1.1: BERT-style encoder tasks
+# ---------------------------------------------------------------------------
+
+
+@respx.mock
+def test_phase_b_qa_passes_with_valid_shape():
+    respx.get(f"{BASE}/v1/models").mock(
+        return_value=httpx.Response(200, json={"data": [{"id": "deepset/roberta-base-squad2"}]})
+    )
+    respx.post(f"{BASE}/v1/qa").mock(
+        return_value=httpx.Response(
+            200,
+            json={
+                "id": "qa-1",
+                "model": "deepset/roberta-base-squad2",
+                "answers": [{"answer": "Mount Everest", "score": 0.98, "start": 0, "end": 13}],
+                "usage": {"total_tokens": 24},
+            },
+        )
+    )
+
+    p = Prober(BASE, "test", profile="ht", endpoints_filter=r"^/v1/qa$")
+    events = p.run()
+    rows = _events_by_endpoint(events, "/v1/qa")
+    assert any(e.phase == "B" and e.status == "PASS" for e in rows), [
+        (e.phase, e.status, e.detail) for e in rows
+    ]
+
+
+@respx.mock
+def test_phase_b_ner_passes_with_valid_shape():
+    respx.get(f"{BASE}/v1/models").mock(
+        return_value=httpx.Response(200, json={"data": [{"id": "dslim/bert-base-NER"}]})
+    )
+    respx.post(f"{BASE}/v1/ner").mock(
+        return_value=httpx.Response(
+            200,
+            json={
+                "id": "ner-1",
+                "model": "dslim/bert-base-NER",
+                "entities": [
+                    {
+                        "entity_group": "ORG",
+                        "score": 0.99,
+                        "word": "Hugging Face Inc.",
+                        "start": 0,
+                        "end": 17,
+                    },
+                    {
+                        "entity_group": "LOC",
+                        "score": 0.99,
+                        "word": "New York",
+                        "start": 30,
+                        "end": 38,
+                    },
+                ],
+                "usage": {"total_tokens": 12},
+            },
+        )
+    )
+
+    p = Prober(BASE, "test", profile="ht", endpoints_filter=r"^/v1/ner$")
+    events = p.run()
+    rows = _events_by_endpoint(events, "/v1/ner")
+    assert any(e.phase == "B" and e.status == "PASS" for e in rows), [
+        (e.phase, e.status, e.detail) for e in rows
+    ]
+
+
+@respx.mock
+def test_phase_b_classifications_passes_with_valid_shape():
+    respx.get(f"{BASE}/v1/models").mock(
+        return_value=httpx.Response(
+            200, json={"data": [{"id": "SamLowe/roberta-base-go_emotions"}]}
+        )
+    )
+    respx.post(f"{BASE}/v1/classifications").mock(
+        return_value=httpx.Response(
+            200,
+            json={
+                "id": "classify-1",
+                "model": "SamLowe/roberta-base-go_emotions",
+                "classifications": [
+                    {"label": "love", "score": 0.94},
+                    {"label": "joy", "score": 0.05},
+                ],
+                "usage": {"total_tokens": 18},
+            },
+        )
+    )
+
+    p = Prober(BASE, "test", profile="ht", endpoints_filter=r"^/v1/classifications$")
+    events = p.run()
+    rows = _events_by_endpoint(events, "/v1/classifications")
+    assert any(e.phase == "B" and e.status == "PASS" for e in rows), [
+        (e.phase, e.status, e.detail) for e in rows
+    ]
+
+
+def test_classify_kind_tags_bert_style_model_ids():
+    """v1.1 kind-classifier hints — common public checkpoints follow HF
+    naming and should sniff cleanly so Phase B sends the right body to
+    the right endpoint."""
+    from am_i_openai_compatible.probe import _classify_kind
+
+    assert "qa" in _classify_kind("deepset/roberta-base-squad2")
+    assert "qa" in _classify_kind("distilbert-base-cased-distilled-squad")
+    assert "ner" in _classify_kind("dslim/bert-base-NER")
+    assert "ner" in _classify_kind("xlm-roberta-large-finetuned-conll03-english")
+    assert "classify" in _classify_kind("facebook/bart-large-mnli")
+    assert "classify" in _classify_kind("MoritzLaurer/ModernBERT-large-zeroshot-v2.0")
+    assert "classify" in _classify_kind("SamLowe/roberta-base-go_emotions")
+    # No false positives on plain chat / embed model ids.
+    assert "qa" not in _classify_kind("gpt-4")
+    assert "ner" not in _classify_kind("text-embedding-3-small")
+    assert "classify" not in _classify_kind("borealis-4b")

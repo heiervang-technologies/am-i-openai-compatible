@@ -23,6 +23,14 @@ Legend: ✅ pass · ⚠️ pass-with-deviation · ❌ not implemented · — out
 | `/v1/3d/generations`                | ❌            | ❌         | ❌                 | **✅**              | —      |
 | `/v1/videos`                        | ❌            | ❌         | ❌                 | **✅**              | —      |
 
+## HT-compat-1.1 endpoints (encoder tasks)
+
+| Endpoint               | TEI | HF Inference API | ht-llama.cpp | vLLM | OpenAI |
+|------------------------|-----|------------------|--------------|------|--------|
+| `/v1/qa`               | ❌   | ⚠️ (`/inputs+parameters`, no envelope) | ❌            | ❌    | —      |
+| `/v1/ner`              | ❌   | ⚠️ (`/inputs+parameters`, no envelope) | ❌            | ❌    | —      |
+| `/v1/classifications`  | ⚠️ (`/predict`, no envelope) | ⚠️ (`/inputs+parameters`, no envelope) | ❌            | ❌    | —      |
+
 ## Reference implementations
 
 The HT-compat spec aligns to one reference implementation per
@@ -38,6 +46,9 @@ matrix above tracks which servers have adopted the canonical shape.
 | `/v1/images/decompositions`     | Qwen-Image-Layered via fal.ai                         |
 | `/v1/3d/generations`            | TRELLIS-2 + Hunyuan3D via ComfyUI workflow shim       |
 | `/v1/videos`                    | OpenAI Sora signature (HT-implemented; no OSS impls yet) |
+| `/v1/qa` (v1.1)                 | HF `transformers` `question-answering` pipeline · HF Inference API |
+| `/v1/ner` (v1.1)                | HF `transformers` `token-classification` pipeline · HF Inference API |
+| `/v1/classifications` (v1.1)    | HF `transformers` `text-classification` + `zero-shot-classification` · TEI `/predict` |
 
 ## Scope per fork
 
@@ -49,6 +60,7 @@ plausibly cover a subset.
 | `ht-llama.cpp`    | `/v1/reranking`. Possibly `[omni]` via proxy to ht-vllm-omni. |
 | `ht-vllm-omni`    | `/v1/chat/completions[omni]`. `/v1/audio/segmentations`?      |
 | `ht-vibe`         | `/v1/audio/segmentations`, future `/v1/audio/separations`.    |
+| TEI deployments   | `/v1/classifications` (matches `/predict` semantics); `/v1/reranking` (matches `/rerank`). `/v1/qa` and `/v1/ner` would need a thin adapter — TEI doesn't currently expose those task types as HTTP endpoints. |
 
 A fork running `aioc probe --profile ht` on a server that only
 implements a subset should set `fail-on: none` (discovery mode); the
@@ -82,3 +94,9 @@ once the server has wired up the endpoints it claims.
   flip to ✅; first probe report against that config is welcome.
   Confirmed via aioc probe report from ht-llama.cpp PR #39 (run
   25821142550 against `feat/ci-aioc-compat-probe` on origin/ht).
+* **`⚠️` for TEI `/predict` and HF Inference API tasks** in the v1.1
+  table because the underlying engines do the work, but the wire
+  shape differs from HT-compat: bare arrays instead of the
+  `{id, model, ..., usage}` envelope, and `inputs`+`parameters`
+  nesting instead of flat field names. A two-file FastAPI adapter
+  in front of either engine is enough to flip to ✅.
