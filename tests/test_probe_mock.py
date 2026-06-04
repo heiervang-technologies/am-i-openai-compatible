@@ -274,6 +274,48 @@ def test_phase_b_chat_fails_on_empty_content_dflash_class():
 
 
 @respx.mock
+@pytest.mark.parametrize(
+    "label,message_obj,expected_substr",
+    [
+        # `content: null` — a real shape we've seen on misconfigured servers
+        # (json-null instead of empty string). Pre-fix collapsed to "missing
+        # content"; differentiated diagnostic surfaces the actual fault.
+        ("null_content", {"role": "assistant", "content": None}, "null content"),
+        # `content` key absent altogether. Reads as "missing key" (vs the
+        # empty-string case which reads as "empty content").
+        ("absent_content_key", {"role": "assistant"}, "missing key"),
+        # `content` resolved to a non-string. Some servers default to 0 or
+        # [] when they have nothing to say. Diagnostic includes the type.
+        ("non_string_content", {"role": "assistant", "content": 0}, "non-string content"),
+    ],
+)
+def test_phase_b_chat_differentiates_content_failure_modes(label, message_obj, expected_substr):
+    """One detail string per failure shape — collapsing them all into
+    'missing content' misled debugging on real server-bug reports."""
+    respx.get(f"{BASE}/v1/models").mock(
+        return_value=httpx.Response(200, json={"data": [{"id": "chat-1"}]})
+    )
+    respx.post(f"{BASE}/v1/chat/completions").mock(
+        return_value=httpx.Response(
+            200,
+            json={
+                "id": "x",
+                "object": "chat.completion",
+                "model": "chat-1",
+                "choices": [{"index": 0, "message": message_obj, "finish_reason": "stop"}],
+            },
+        )
+    )
+    p = Prober(BASE, "test", endpoints_filter=r"^/v1/chat/completions$")
+    events = p.run()
+    rows = _events_by_endpoint(events, "/v1/chat/completions")
+    phase_b = next((e for e in rows if e.phase == "B"), None)
+    assert phase_b is not None, [(e.phase, e.status, e.detail) for e in rows]
+    assert phase_b.status == "FAIL", (label, phase_b.status, phase_b.detail)
+    assert expected_substr in phase_b.detail, (label, phase_b.detail)
+
+
+@respx.mock
 def test_phase_b_sse_stream_fails_on_empty_delta_content():
     """Streaming variant of the dflash bug: chunks ARE emitted (the SSE
     framing works) and [DONE] is sent, but every chunk's

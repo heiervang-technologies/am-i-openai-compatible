@@ -634,8 +634,22 @@ class Prober:
             return ("FAIL", f"missing keys: {', '.join(missing)}", http_status)
         if ep.content_path and ep.min_content_length > 0:
             ok, val = _get_dotted(body, ep.content_path)
-            if not ok or not isinstance(val, str):
-                return ("FAIL", f"missing content at {ep.content_path}", http_status)
+            # Differentiate the three failure shapes — same gate, different
+            # diagnostic. Conflating them all as "missing content" misleads
+            # debugging: a null value at the path is a different server bug
+            # from the path being absent, and either is different from a
+            # non-string (e.g. some servers default to 0 / [] when they
+            # have nothing to say).
+            if not ok:
+                return ("FAIL", f"missing key {ep.content_path}", http_status)
+            if val is None:
+                return ("FAIL", f"null content at {ep.content_path}", http_status)
+            if not isinstance(val, str):
+                return (
+                    "FAIL",
+                    f"non-string content at {ep.content_path} (got {type(val).__name__})",
+                    http_status,
+                )
             if len(val) < ep.min_content_length:
                 return (
                     "FAIL",
