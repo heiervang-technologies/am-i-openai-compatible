@@ -60,12 +60,14 @@ class Endpoint:
     ws_init_event: dict | None = None  # event to send after WS upgrade
     ws_expect_event: str = ""  # event "type" we expect back to count as PASS
     # Content-degeneracy guard: catches the 200-OK-with-empty-content bug
-    # class (e.g. ht-llama.cpp dflash speculative-decode emitting all-NaN
-    # logits on jinja chat-completions while completions worked — mission
-    # m-20260527-103737-36364b). For non-streaming, `content_path` names the
-    # dotted path Phase B reads. For streaming, the value is reassembled
-    # from `choices.0.delta.content` across chunks. min_content_length=0
-    # disables the check (legacy behaviour for endpoints we don't gate).
+    # class (well-shaped response with finish_reason=stop but zero useful
+    # tokens — seen with speculative-decoding KV-reuse regressions
+    # producing all-NaN logits, and quantization corner cases that
+    # collapse the output distribution). For non-streaming, `content_path`
+    # names the dotted path Phase B reads. For streaming, the value is
+    # reassembled from `choices.0.delta.content` across chunks.
+    # min_content_length=0 disables the check (legacy behaviour for
+    # endpoints we don't gate).
     content_path: str = ""
     min_content_length: int = 0
 

@@ -232,15 +232,16 @@ def test_phase_b_chat_fails_when_required_keys_missing():
 
 
 @respx.mock
-def test_phase_b_chat_fails_on_empty_content_dflash_class():
-    """Catches the 200-OK-but-empty-content bug class — e.g. the
-    2026-05-27 ht-llama.cpp dflash speculative-decoder emitting all-NaN
-    logits on jinja chat-completions, producing finish_reason=stop with
-    zero content tokens (mission m-20260527-103737-36364b). Today's
-    shape check (key existence only) would PASS that, since
-    `choices[0].message.content` exists — it's just the empty string.
-    With content_path + min_content_length=1 on the chat row, the
-    response now grades FAIL.
+def test_phase_b_chat_fails_on_empty_content():
+    """Catches the 200-OK-but-empty-content bug class — a real failure
+    mode where the server returns a well-shaped response with
+    `finish_reason="stop"` but zero content tokens (seen with
+    speculative-decoding KV-reuse regressions producing all-NaN logits,
+    and quantization corner cases that collapse the output
+    distribution). A shape check that only verifies key existence
+    would PASS this, since `choices[0].message.content` exists — it's
+    just the empty string. With content_path + min_content_length=1
+    on the chat row, the response now grades FAIL.
     """
     respx.get(f"{BASE}/v1/models").mock(
         return_value=httpx.Response(200, json={"data": [{"id": "chat-1"}]})
@@ -317,8 +318,8 @@ def test_phase_b_chat_differentiates_content_failure_modes(label, message_obj, e
 
 @respx.mock
 def test_phase_b_sse_stream_fails_on_empty_delta_content():
-    """Streaming variant of the dflash bug: chunks ARE emitted (the SSE
-    framing works) and [DONE] is sent, but every chunk's
+    """Streaming variant of the empty-content bug: chunks ARE emitted
+    (the SSE framing works) and [DONE] is sent, but every chunk's
     `choices[0].delta.content` is empty. Today: PASS. After
     min_content_length=1 on the stream row: FAIL.
     """

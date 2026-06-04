@@ -35,14 +35,14 @@ versions follow [SemVer](https://semver.org/).
 - **Empty-content grading** on `/v1/chat/completions`,
   `/v1/chat/completions[stream]`, and `/v1/completions`. Catches the
   200-OK-with-empty-content bug class: response shape is valid, the
-  required keys exist, `finish_reason="stop"`, but the model emitted
-  zero useful tokens (the ht-llama.cpp dflash speculative-decoder
-  all-NaN-logits signature on jinja chat-completions; mission
-  `m-20260527-103737-36364b`). New `Endpoint.content_path` +
+  required keys exist, `finish_reason="stop"`, but the model emits
+  zero useful tokens — a failure mode that shows up with
+  speculative-decoding KV-cache-reuse regressions that produce
+  all-NaN logits, and with quantization corner cases that silently
+  collapse the output distribution. New `Endpoint.content_path` +
   `Endpoint.min_content_length` fields. Streaming path reassembles
   `choices[0].delta.content` across chunks and applies the same gate.
-  Regression tests in `tests/test_probe_mock.py::test_phase_b_chat_fails_on_empty_content_dflash_class`
-  and `test_phase_b_sse_stream_fails_on_empty_delta_content`.
+  Regression tests in `tests/test_probe_mock.py`.
 
 - `aioc render REPORT.json` — colored 4-glyph table renderer for
   probe reports. Promoted from the ad-hoc `scripts/render-report.py`
