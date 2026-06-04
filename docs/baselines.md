@@ -3,12 +3,7 @@
 Snapshots of what real OpenAI-compatible HTTP servers actually
 implement, as observed by `aioc probe`. Each section names a target,
 the date/version under which it was probed, and the noteworthy
-findings — not the full per-endpoint table (those live in
-`.probe-reports/*.json`).
-
-All probes below were run against `aioc 0.3.0` (27 catalog rows
-across `core / optional / ext / ours` kinds plus the `/v1/realtime`
-WebSocket row).
+findings — not the full per-endpoint table.
 
 > **Reading the numbers.** PASS = endpoint exists and (where Phase B
 > ran) honors the response shape. WARN = exists but deviates,
@@ -16,6 +11,12 @@ WebSocket row).
 > on a required endpoint, malformed response, or non-canonical error
 > envelope. SKIP = liveness short-circuit or no model of the required
 > kind to test against.
+
+The OpenAI section below is the only public reference baseline kept
+here — other baselines live with their respective deployments. To
+contribute a baseline for an OSS server (llama.cpp, vLLM, Ollama,
+LM Studio, TabbyAPI, …), open a PR adding a section using the same
+shape.
 
 ---
 
@@ -31,7 +32,6 @@ WebSocket row).
 | FAIL | 4 |
 | SKIP | 14 |
 | Duration | 11.8s |
-| Report | `.probe-reports/openai-api-com-2026-05-16-v0.3.json` |
 
 **Headline:** **`/v1/realtime` accepts unauth WebSocket upgrades.** The
 upgrade returns `101 Switching Protocols`; OpenAI then presumably
@@ -59,250 +59,23 @@ full Phase B coverage (real chat completions, embeddings, the
 Realtime `session.created` event round-trip). The unauth baseline
 above is the floor — every endpoint that wasn't a `404` exists.
 
----
-
-## ht-comfy-openai (titan) · `http://192.168.8.170:30385`
-
-In-house ComfyUI translator pod maintained by the `snoop-kube` agent.
-Translates ComfyUI workflows into the OpenAI surface for images,
-videos, and (as of v0.2.1 / PR #5) 3D generation.
-
-### `openai` profile
-
-**Probed:** 2026-05-16 · `aioc 0.3.0`, default profile.
-
-| | |
-|---|---|
-| PASS | 6 |
-| WARN | 4 |
-| FAIL | 14 |
-| SKIP | 0 |
-| Duration | 15.5s |
-| Report | `.probe-reports/titan-comfy-2026-05-16.json` |
-
-**Surface:** model discovery works (`/v1/models`, `/v1/models/{id}`).
-Capability-gated endpoints (`/v1/audio/speech`,
-`/v1/audio/transcriptions`, `/v1/embeddings`) honestly 404 → WARN. No
-chat — this pod doesn't pretend.
-
-**Two real bugs found:**
-
-* **`/v1/images/edits` returns `500 Internal Server Error`** on an
-  empty multipart body where 4xx is the OpenAI canonical response.
-  Worth a ticket to snoop-kube — looks like missing input-validation
-  before the worker dispatch.
-* **`/v1/images/generations` times out** at the 15s probe budget.
-  Either slow first-request warmup or the row's tiny synthetic-image
-  body trips the ComfyUI workflow. Probably benign in production, but
-  the probe can't grade it.
-
-### `ht` profile
-
-**Probed:** 2026-05-16 · `aioc 0.3.0`, `--profile ht`.
-
-| | |
-|---|---|
-| PASS | 10 |
-| WARN | 4 |
-| FAIL | 19 |
-| SKIP | 0 |
-| Duration | 15.4s |
-| Report | `.probe-reports/titan-comfy-ht-2026-05-16.json` |
-
-**HT-compat row coverage:**
-
-| Endpoint | Result |
-|---|---|
-| `/v1/3d/generations` | ✅ Phase A PASS (400 on empty body — route exists, validation works) |
-| `/v1/videos` | ✅ Phase A PASS (422 on empty body — route exists, schema validation) |
-| `/v1/reranking` | ❌ 404 |
-| `/v1/segmentations` | ❌ 404 |
-| `/v1/audio/segmentations` | ❌ 404 |
-| `/v1/chat/completions[omni]` | ❌ 404 (no chat surface at all on this pod) |
-| `/v1/images/decompositions` | ❌ 404 |
-
-Two HT endpoints live, five not implemented — exactly what you'd
-expect from a ComfyUI translator: image/video/3D pipelines, no LLM
-surface.
+A nightly canary against `https://api.openai.com` runs from
+`.github/workflows/openai-canary.yml`; reports are archived as
+build artifacts so drift in OpenAI's own surface is detectable.
 
 ---
 
-## lile / live-learn (daemon) · `http://127.0.0.1:8768`
+## How to add or refresh a baseline
 
-In-house RLVR training daemon (`~/ht/agi/lile`). Exposes an
-OpenAI-shaped `/v1/*` surface intended primarily as a learn-loop
-endpoint, not a general-purpose model router.
-
-**Probed:** 2026-05-16 · `aioc 0.3.0`, `--skip-phase-b` (chat-only
-surface, no `/v1/models` sniff).
-
-| | |
-|---|---|
-| PASS | 3 |
-| WARN | 5 |
-| FAIL | 12 |
-| SKIP | 3 |
-| Report | `.probe-reports/lile-daemon-2026-05-16.json` |
-
-**Surface:** `/v1/chat/completions` family is the entire footprint —
-the three `chat/completions[*]` rows PASS Phase A. Every other
-core/ext endpoint returns 404. Optional capability endpoints
-(`/v1/audio/speech`, `/v1/audio/transcriptions`, `/v1/embeddings`,
-`/v1/images/generations`) honestly 404 → WARN.
-
-**Notable absence:** `/v1/models` returns 404 → FAIL. lile is
-chat-only and doesn't advertise discovery; clients have to know the
-model name out-of-band. Worth a follow-up to either implement
-`/v1/models` returning a single-element list, or document this
-deliberate omission.
-
-**`/v1/realtime` returns 403** on the WS upgrade — graded WARN ("auth
-required"). Probably accidental; lile's chat surface is unauth
-otherwise.
-
----
-
-## lile demo proxy · `http://127.0.0.1:8766`
-
-The companion proxy that fronts the daemon (`LILE_PROXY_BIND`).
-
-**Probed:** 2026-05-16 · `aioc 0.3.0`, `--skip-phase-b`.
-
-| | |
-|---|---|
-| PASS | 0 |
-| WARN | 14 |
-| FAIL | 5 |
-| SKIP | 1 |
-| Report | `.probe-reports/lile-proxy-2026-05-16.json` |
-
-**Headline:** **the proxy returns `501 Not Implemented` with a Python
-stdlib `<!DOCTYPE HTML>` error page** on every chat/audio/images
-endpoint. That's *technically* the capability-gated response —
-`aioc` correctly grades it WARN — but the HTML body breaks the
-OpenAI canonical error envelope contract (HT-compat-1.0 explicitly
-calls this out as non-compliant; see
-[the error-envelope section](spec/ht-compat.md#error-envelope-required)).
-
-**Follow-up:** patch the proxy to wrap responses in
-`{"error": {"message": "...", "type": "..."}}` JSON so OSS clients
-that parse the canonical shape don't choke.
-
----
-
-## llama.cpp · vanilla (no HT patches)
-
-Not probed in this round directly from the maintainer host — the
-canonical baseline lives inside
-[`heiervang-technologies/ht-llama.cpp`](https://github.com/heiervang-technologies/ht-llama.cpp)'s
-own CI workflow, which runs `aioc` against a freshly-booted
-`llama-server` on every PR.
-
-The fork's most recent baseline (CI run 25821142550 on
-`feat/ci-aioc-compat-probe`) showed `/v1/reranking` returning **501
-with the canonical OpenAI error envelope** when booted without
-`--reranking` — the HT-compat capability-gating contract done right.
-
----
-
-## ht-llama.cpp (lithium) · multi-model router
-
-**Probed:** 2026-05-21 · `aioc 0.3.0`, `ht` profile, against a live
-deploy on lithium (`/app/llama-server --models-preset llama-router.ini
---models-max 1`). Tunneled to the maintainer host over SSH to the pod
-IP `10.42.5.233:8080`. 12 models served (text + embedding + omni).
-
-| | Phase A only | Phase A + B |
-|---|---|---|
-| PASS | 10 | 3 |
-| WARN | 2 | 2 |
-| FAIL | 15 | 22 |
-| Duration | 0.3s | 71s |
-| Report | `.probe-reports/lithium-ht-llama-cpp-2026-05-21-phaseA.json` | `.probe-reports/lithium-ht-llama-cpp-2026-05-21.json` |
-
-**Headline finding:** Phase A on this fork PASSes `/v1/reranking` and
-`/v1/chat/completions[omni]` — both HT-compat extensions wired up
-beyond vanilla llama.cpp. **But under Phase B with the default 12s
-budget, six chat/embedding rows time out** because the router
-autoloads the target model on first request and cold-load on this
-hardware exceeds 12s.
-
-**Warm-budget re-probe** (90s timeout, chat/embedding/rerank/omni
-only, report `.probe-reports/lithium-ht-llama-cpp-2026-05-21-warm.json`):
-
-| Endpoint | Status | Detail |
-|---|---|---|
-| `/v1/chat/completions` | ● PASS | shape ok |
-| `/v1/chat/completions[stream]` | ● PASS | chunks=4, [DONE]=True |
-| `/v1/embeddings` | ▲ 501 WARN | capability gated; needs `--embeddings` boot flag |
-| `/v1/reranking` | ▲ 501 WARN | capability gated; needs `--reranking` boot flag |
-| `/v1/chat/completions[omni]` | ✖ FAIL | `choices[0].message.audio.data` missing — partial omni impl |
-
-(The original 2026-05-21 run graded those two 501 rows as FAIL — Phase
-B's grading was stricter than Phase A's at the time. That asymmetry
-was fixed in commit `5eea1c2`; re-running today produces the WARN rows
-shown above.)
-
-**Real findings worth filing:**
-
-1. ~~**Phase B grades canonical 501 as FAIL, Phase A grades it as
-   WARN.**~~ Fixed in `5eea1c2`: Phase B `_phase_b_post / _get / _sse`
-   now grade a 501-with-envelope as WARN, matching Phase A. New
-   regression test in `tests/test_probe_mock.py::test_phase_b_501_with_envelope_grades_warn`.
-2. **Omni signature gap on this fork.** `/v1/chat/completions[omni]`
-   returns 200 but without `audio.data` in the message — i.e. text
-   half of the omni contract works, audio output not yet wired. The
-   `vllm-omni` baseline (TBD) is the canonical reference here.
-3. **`/v1/models` already exposes per-model modality metadata** via
-   `architecture.input_modalities` / `architecture.output_modalities`
-   plus a `status.value` field (`loaded` / `unloaded`). That's the
-   de-facto answer to #2's "per-model capability advertisement" item
-   for the modality axis. A formal `x_ht_compat` array (covering
-   capabilities like `reranking`, `omni`, `embedding`) would still be
-   additive.
-
-The `aioc-demo.gif` in the README is the Phase A render of this
-target — its green PASSes on `/v1/reranking` and
-`/v1/chat/completions[omni]` represent route-existence only; Phase B
-shows where the surface meets reality.
-
----
-
-## vLLM · `~/ht/forks/ht-vllm`
-
-**Not yet probed** in this round — no live deployment URL available
-to the maintainer host as of 2026-05-16.
-
-`snoop-kube` (`~/ht/cloud`) likely owns the cluster spec; once a
-service URL exists, the command is:
-
-```bash
-aioc probe http://<vllm-host>:8000 --name vllm
-```
-
----
-
-## vllm-omni · `~/ht/forks/ht-vllm-omni`
-
-**Not yet probed** for the same reason as vanilla vLLM. This is the
-only known `/v1/chat/completions[omni]` reference implementation —
-worth re-baselining under `--profile ht` once available:
-
-```bash
-aioc probe http://<vllm-omni-host>:8000 --name vllm-omni \
-  --profile ht --model qwen2.5-omni-7b
-```
-
----
-
-## How to refresh
-
-1. Run the probe (commands per section above).
-2. Archive the report under `.probe-reports/<service>-<date>.json` —
-   the directory is gitignored, durable across `/tmp` wipes.
-3. If the report surfaces real catalog drift (a 404 against a server
-   that should implement the endpoint), file a follow-up issue.
-4. Update [the compatibility matrix](compatibility-matrix.md) and (for
-   `--profile ht` runs) [the HT-compat matrix](ht-compatibility-matrix.md).
-
-Tracked in [issue #10](https://github.com/heiervang-technologies/am-i-openai-compatible/issues/10).
+1. Run the probe against your target — `aioc probe http://<host>`
+   (add `--profile ht` to include HT-compat extension rows;
+   `--openai-api-key …` to unlock Phase B against OpenAI).
+2. Save the report somewhere durable (`.probe-reports/` is gitignored
+   here, so reports stay local unless you commit them explicitly).
+3. If the report surfaces real catalog drift — a 404 against a server
+   that should implement the endpoint, or a malformed response shape
+   — file an issue.
+4. To contribute a baseline section to this doc, open a PR with the
+   same headline / summary-table / findings shape as the OpenAI
+   section above. Keep it factual and short; the per-endpoint detail
+   belongs in the probe report, not in prose.

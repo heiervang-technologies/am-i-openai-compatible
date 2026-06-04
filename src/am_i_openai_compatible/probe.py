@@ -203,13 +203,13 @@ def _classify_kind(model_id: str) -> set[str]:
 def _kinds_from_architecture(model: dict) -> set[str]:
     """Read per-model capability hints from `/v1/models[i].architecture`.
 
-    ht-llama.cpp exposes `architecture.input_modalities` and
-    `architecture.output_modalities` per the OpenAI-shaped model
-    response. Use them as a second signal alongside lexical _classify_kind
-    so model ids that don't follow HF naming still get tagged correctly.
-    Surfaced by issue #15: `gemma-4-e4b` is omni-capable per
-    `input_modalities=['text', 'image', 'audio']` but had no `omni`
-    substring in the id, so it was falling back to plain `chat`.
+    Some llama.cpp-derived servers expose `architecture.input_modalities`
+    and `architecture.output_modalities` per model in the OpenAI-shaped
+    model response. Use them as a second signal alongside lexical
+    `_classify_kind` so model ids that don't follow HF naming still get
+    tagged correctly. Surfaced by issue #15: a model with
+    `input_modalities=['text', 'image', 'audio']` but no `omni`
+    substring in its id was falling back to plain `chat`.
     """
     arch = model.get("architecture") or {}
     in_mods = arch.get("input_modalities") or []

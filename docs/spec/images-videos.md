@@ -64,9 +64,7 @@ because OpenAI's Sora API is still narrow and most local implementers
 have invented their own job shape.
 
 This catalog uses the shape that matches OpenAI's Sora response and
-that the comfy-openai shim
-(<https://github.com/heiervang-technologies/cloud/tree/main/docker/comfy-openai>)
-emits:
+that ComfyUI-workflow-shim implementations have converged on:
 
 **Create:**
 

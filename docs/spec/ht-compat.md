@@ -1,9 +1,10 @@
 # HT-compat — Heiervang Technologies API extension
 
 > **HT-compat-1.0** — opinionated `/v1/...` signatures for model classes
-> OpenAI doesn't yet pin. Reference layer for OSS forks (`ht-llama.cpp`,
-> downstream vLLM patches, etc.) so clients can be written once and
-> retarget across implementations.
+> OpenAI doesn't yet pin. A convergence target for OSS forks (custom
+> llama.cpp builds, downstream vLLM patches, ComfyUI workflow shims,
+> etc.) so clients can be written once and retarget across
+> implementations.
 
 ## Why this exists
 
@@ -361,9 +362,9 @@ Top-level fields:
 
 `audio.voice` is implementation-defined. HT-compat does **not** pin
 the OpenAI voice set (`alloy`, `echo`, `fable`, `onyx`, `nova`,
-`shimmer`) because several reference implementations
-(notably `ht-llama.cpp`'s ref-audio-clone TTS) use arbitrary file
-names instead of a fixed catalog. Clients SHOULD enumerate available
+`shimmer`) because several reference implementations (notably
+reference-audio-clone TTS builds) use arbitrary file names instead of
+a fixed catalog. Clients SHOULD enumerate available
 voices via `/v1/audio/voices` and pass one of the returned ids. A
 server that gets a voice name it doesn't know MUST return **400**
 with `error.code: "unknown_voice"`.

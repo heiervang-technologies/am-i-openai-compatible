@@ -13,23 +13,23 @@ Legend: ✅ pass · ⚠️ pass-with-deviation · ❌ not implemented · — out
 
 ## HT-compat-1.0 endpoints
 
-| Endpoint                            | ht-llama.cpp | vLLM omni | vanilla llama.cpp | titan-comfy-openai | OpenAI |
-|-------------------------------------|--------------|-----------|-------------------|--------------------|--------|
-| `/v1/reranking`                     | ⚠️            | ⚠️         | ⚠️                 | ❌                  | —      |
-| `/v1/segmentations`                 | ❌            | ❌         | ❌                 | ❌                  | —      |
-| `/v1/audio/segmentations`           | ❌            | ❌         | ❌                 | ❌                  | —      |
-| `/v1/chat/completions` *(omni)*     | ❌            | ✅         | ❌                 | ❌                  | —      |
-| `/v1/images/decompositions`         | ❌            | ❌         | ❌                 | ❌                  | —      |
-| `/v1/3d/generations`                | ❌            | ❌         | ❌                 | **✅**              | —      |
-| `/v1/videos`                        | ❌            | ❌         | ❌                 | **✅**              | —      |
+| Endpoint                            | vLLM omni | vanilla llama.cpp | comfy-openai shim | OpenAI |
+|-------------------------------------|-----------|-------------------|-------------------|--------|
+| `/v1/reranking`                     | ⚠️         | ⚠️                 | ❌                 | —      |
+| `/v1/segmentations`                 | ❌         | ❌                 | ❌                 | —      |
+| `/v1/audio/segmentations`           | ❌         | ❌                 | ❌                 | —      |
+| `/v1/chat/completions` *(omni)*     | ✅         | ❌                 | ❌                 | —      |
+| `/v1/images/decompositions`         | ❌         | ❌                 | ❌                 | —      |
+| `/v1/3d/generations`                | ❌         | ❌                 | **✅**             | —      |
+| `/v1/videos`                        | ❌         | ❌                 | **✅**             | —      |
 
 ## HT-compat-1.1 endpoints (encoder tasks)
 
-| Endpoint               | TEI | HF Inference API | ht-llama.cpp | vLLM | OpenAI |
-|------------------------|-----|------------------|--------------|------|--------|
-| `/v1/qa`               | ❌   | ⚠️ (`/inputs+parameters`, no envelope) | ❌            | ❌    | —      |
-| `/v1/ner`              | ❌   | ⚠️ (`/inputs+parameters`, no envelope) | ❌            | ❌    | —      |
-| `/v1/classifications`  | ⚠️ (`/predict`, no envelope) | ⚠️ (`/inputs+parameters`, no envelope) | ❌            | ❌    | —      |
+| Endpoint               | TEI | HF Inference API | vanilla llama.cpp | vLLM | OpenAI |
+|------------------------|-----|------------------|-------------------|------|--------|
+| `/v1/qa`               | ❌   | ⚠️ (`/inputs+parameters`, no envelope) | ❌                 | ❌    | —      |
+| `/v1/ner`              | ❌   | ⚠️ (`/inputs+parameters`, no envelope) | ❌                 | ❌    | —      |
+| `/v1/classifications`  | ⚠️ (`/predict`, no envelope) | ⚠️ (`/inputs+parameters`, no envelope) | ❌                 | ❌    | —      |
 
 ## Reference implementations
 
@@ -55,12 +55,13 @@ matrix above tracks which servers have adopted the canonical shape.
 HT-compat is a buffet, not a checklist — most forks will only
 plausibly cover a subset.
 
-| Fork              | Plausible HT-compat surface                                   |
-|-------------------|---------------------------------------------------------------|
-| `ht-llama.cpp`    | `/v1/reranking`. Possibly `[omni]` via proxy to ht-vllm-omni. |
-| `ht-vllm-omni`    | `/v1/chat/completions[omni]`. `/v1/audio/segmentations`?      |
-| `ht-vibe`         | `/v1/audio/segmentations`, future `/v1/audio/separations`.    |
-| TEI deployments   | `/v1/classifications` (matches `/predict` semantics); `/v1/reranking` (matches `/rerank`). `/v1/qa` and `/v1/ner` would need a thin adapter — TEI doesn't currently expose those task types as HTTP endpoints. |
+| Server family                | Plausible HT-compat surface                                   |
+|------------------------------|---------------------------------------------------------------|
+| llama.cpp + extensions       | `/v1/reranking` (already routed; needs `--reranking` boot flag and a rerank-class model). |
+| vLLM omni-capable builds     | `/v1/chat/completions[omni]` is the only known reference impl today. |
+| audio-segmentation servers   | `/v1/audio/segmentations` once a SAM-Audio HTTP wrapper exists. |
+| TEI deployments              | `/v1/classifications` (matches `/predict` semantics); `/v1/reranking` (matches `/rerank`). `/v1/qa` and `/v1/ner` need a thin adapter — TEI doesn't currently expose those task types as HTTP endpoints. |
+| ComfyUI workflow shims       | `/v1/images/{generations,edits,decompositions}`, `/v1/videos`, `/v1/3d/generations` — anything whose pipeline already lives as a ComfyUI workflow. |
 
 A fork running `aioc probe --profile ht` on a server that only
 implements a subset should set `fail-on: none` (discovery mode); the
@@ -77,23 +78,19 @@ once the server has wired up the endpoints it claims.
   gaps; if OpenAI ships a `/v1/segmentations` we'll re-evaluate.
 * **`⚠️` for vLLM rerank** because vLLM's rerank endpoint is
   Cohere-compatible (no `/v1/` prefix); the response shape matches.
-* **`✅` for titan-comfy-openai 3D generations** — first HT-compat
-  endpoint with a working OSS implementation. Hunyuan3D-2 served via
-  ComfyUI workflow shim; verified end-to-end with `aioc probe
-  http://192.168.8.170:30385 --profile ht` (Phase A + Phase B both
-  PASS). HTTP 202 on submission, GLB returned via `/v1/3d/generations/{id}/content`.
-* **`✅` for titan-comfy-openai videos** — flipped from ⚠️ after
-  comfy-openai v5 added Pydantic `image_url` alias on the videos
-  handler (legacy `image` still accepted). Verified with `aioc probe
-  --profile ht` against ltx-2.3.
-* **`⚠️` for llama.cpp rerank** (both forks) because `llama-server`
-  ships the `/v1/reranking` route from upstream and, when booted
-  *without* `--reranking`, returns 501 with the canonical OpenAI
-  error envelope — the HT-compat-1.0 capability-gating contract. A
-  server booted with `--reranking` and a rerank-class model would
-  flip to ✅; first probe report against that config is welcome.
-  Confirmed via aioc probe report from ht-llama.cpp PR #39 (run
-  25821142550 against `feat/ci-aioc-compat-probe` on origin/ht).
+* **`✅` for comfy-openai 3D generations** — first HT-compat
+  endpoint with a working OSS-stack implementation. Hunyuan3D-2 served
+  via a ComfyUI workflow shim; HTTP 202 on submission, GLB returned
+  via `/v1/3d/generations/{id}/content`.
+* **`✅` for comfy-openai videos** — handler accepts both `image` and
+  `image_url` (Pydantic alias) so payloads from either convention
+  validate cleanly.
+* **`⚠️` for llama.cpp rerank** because `llama-server` ships the
+  `/v1/reranking` route from upstream and, when booted *without*
+  `--reranking`, returns 501 with the canonical OpenAI error envelope
+  — the HT-compat-1.0 capability-gating contract. A server booted
+  with `--reranking` and a rerank-class model would flip to ✅;
+  first probe report against that config is welcome.
 * **`⚠️` for TEI `/predict` and HF Inference API tasks** in the v1.1
   table because the underlying engines do the work, but the wire
   shape differs from HT-compat: bare arrays instead of the
