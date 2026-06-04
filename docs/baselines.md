@@ -266,6 +266,37 @@ target — its green PASSes on `/v1/reranking` and
 `/v1/chat/completions[omni]` represent route-existence only; Phase B
 shows where the surface meets reality.
 
+### v1.1 endpoint addendum (2026-06-04, ht-compat 1.1 branch)
+
+Re-probed lithium against the `feat/ht-compat-1.1-bert` aioc to
+validate the new BERT-style catalog rows wire up correctly. Used
+`--skip-phase-b` for a 40-event Phase A sweep plus a focused
+`--endpoints-filter '^/v1/(qa|ner|classifications)$'` run.
+
+All three v1.1 rows grade as expected on a chat-only server:
+
+| Endpoint              | Phase A status | HTTP | Notes |
+|---|---|---|---|
+| `/v1/qa`              | ✖ FAIL | 404 | route absent (vanilla llama-server has no encoder backend) |
+| `/v1/ner`             | ✖ FAIL | 404 | same |
+| `/v1/classifications` | ✖ FAIL | 404 | same |
+
+Under `--profile ht`, a 404 on a `kind="ours"` row grades FAIL by
+design (the server claims HT-compat but is missing a required
+endpoint). The 40-event sweep totals **FAIL=18 · PASS=10 · SKIP=10 ·
+WARN=2** — the FAIL bucket is dominated by the new v1.1 rows
+plus the existing `ours` rows for segmentations / decompositions /
+audio-segmentations / 3d / videos. Reports archived under
+`.probe-reports/lithium-ht-llama-cpp-2026-06-04.json` and
+`.probe-reports/lithium-v11-2026-06-04.json` (gitignored).
+
+This is the catalog wire-up evidence — confirms the requires_model_kind
+classifier paths (`qa`/`ner`/`classify`) don't accidentally pick up
+chat models, and the Phase A 404→FAIL grading covers the new rows.
+**Not** evidence that lithium implements these endpoints (it doesn't,
+and isn't expected to — encoder-only tasks are out of scope for a
+decoder-focused llama.cpp fork). The matrix row remains ❌.
+
 ---
 
 ## vLLM · `~/ht/forks/ht-vllm`
