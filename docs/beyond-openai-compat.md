@@ -400,6 +400,430 @@ order is the actionable layout.
 
 ---
 
+## Async video generation
+
+**Convergence: partial.** Every video API in the field is async
+(submit job → poll/webhook → download URL). Beyond that universal
+shape, field names diverge: `prompt` vs `promptText` vs `text_prompt`;
+`aspect_ratio` (`"16:9"`) vs `ratio` (`"1280:720"`) vs `size`
+(`"1280x720"`); `duration` (seconds) vs `seconds` (string seconds) vs
+`length` (frames). OpenAI's Sora API is the closest thing to a
+formal reference but it's narrow and **scheduled for deprecation on
+2026-09-24** — so HT-compat's Sora-shape pin is convergence-target
+rather than tracking-an-evolving-vendor.
+
+### OpenAI Sora — `POST /v1/videos` (formal, deprecating 2026-09-24)
+
+JSON body for text-only generations; `multipart/form-data` when
+attaching an image reference.
+
+```json
+{
+  "model": "sora-2",
+  "prompt": "Wide tracking shot of a teal coupe driving through a desert highway.",
+  "size": "1280x720",
+  "seconds": "8"
+}
+```
+
+| Field | Type | Notes |
+|---|---|---|
+| `model` | string | `sora-2` (default) or `sora-2-pro` |
+| `prompt` | string | required |
+| `size` | string | width×height; e.g. `"720x1280"`, `"1920x1080"` (sora-2-pro only) |
+| `seconds` | string | `"4"`, `"8"`, `"12"`, or up to `"20"` (Mar-2026 expansion) |
+| `characters` | array | reusable reference IDs (Mar-2026 expansion) |
+
+**Response** (job envelope):
+
+```json
+{
+  "id": "video_68d7512d...",
+  "object": "video",
+  "created_at": 1758941485,
+  "status": "queued",
+  "model": "sora-2-pro",
+  "progress": 0,
+  "seconds": "8",
+  "size": "1280x720"
+}
+```
+
+Status: `queued` → `in_progress` → `completed` | `failed`. Poll via
+`GET /v1/videos/{id}`. Download via a separate content endpoint.
+Companion endpoints: `POST /v1/videos/characters`,
+`POST /v1/videos/extensions`,
+`POST /v1/videos/{video_id}/edits`.
+
+### Runway — `POST /v1/image_to_video`
+
+Different envelope, different field names, custom version header.
+
+```json
+{
+  "model": "gen4_turbo",
+  "promptText": "A timelapse on a sunny day with clouds flying by",
+  "promptImage": "https://...jpg",
+  "ratio": "1280:720",
+  "duration": 5,
+  "seed": 4294967295
+}
+```
+
+Headers: `X-Runway-Version: 2024-11-06`, `Authorization: Bearer ...`.
+Note `promptText` / `promptImage` (camelCase),
+`ratio: "1280:720"` (colon-separated pixel ratio, not `:` aspect
+ratio like Luma), `duration` as integer seconds. Gen-4.5 supports
+text-to-video by omitting `promptImage`.
+
+### Luma Dream Machine — `POST /dream-machine/v1/generations`
+
+```json
+{
+  "prompt": "an old lady laughing underwater, wearing a scuba diving suit",
+  "model": "ray-2",
+  "aspect_ratio": "16:9",
+  "loop": true,
+  "resolution": "1080p",
+  "duration": 5
+}
+```
+
+Fields: `prompt`, `model`, `aspect_ratio` (colon-separated:
+`"1:1"`, `"16:9"`, `"9:16"`, `"4:3"`, `"3:4"`, `"21:9"`, `"9:21"`),
+`resolution` (`"540p"`/`"720p"`/`"1080p"`/`"4k"`), `duration` (5 or 9),
+`loop` (bool), `keyframes: {frame0, frame1}` for image-to-video /
+extend / interpolate.
+
+**Response** carries a `state` enum (not `status`) and an `assets`
+object with URLs by type:
+
+```json
+{
+  "id": "123e4567-e89b-...",
+  "state": "completed",
+  "failure_reason": null,
+  "created_at": "2023-06-01T12:00:00Z",
+  "assets": {"video": "https://example.com/video.mp4"},
+  "version": "ray-2",
+  "request": {"prompt": "...", "aspect_ratio": "16:9", "loop": true}
+}
+```
+
+The `request` echoback is unusual — clients can resume context
+without keeping their own copy.
+
+### fal.ai — queue pattern (applies to LTX, Pika, MiniMax, Kling, etc.)
+
+fal.ai is a model aggregator; it normalizes every model under a
+single queue/result shape. The same wrapper covers dozens of video
+backends.
+
+**Submit:**
+
+```js
+const { request_id } = await fal.queue.submit("fal-ai/ltx-video", {
+  input: {
+    prompt: "...",
+    negative_prompt: "...",
+    seed: 42,
+    num_inference_steps: 30,
+    guidance_scale: 3
+  },
+  webhookUrl: "https://..."
+});
+```
+
+`input` is model-specific (LTX has different fields than Pika has
+different fields than MiniMax). The envelope around it is universal.
+
+**Result** (after polling `fal.queue.status` or webhook):
+
+```json
+{
+  "data": {
+    "video": {
+      "url": "https://...",
+      "content_type": "video/mp4",
+      "file_name": "...",
+      "file_size": 12345678
+    },
+    "seed": 42
+  },
+  "requestId": "..."
+}
+```
+
+Pika 2.1+ ships via fal.ai endpoints (`fal-ai/pika/v2.1/text-to-video`)
+as the canonical access path — the older `pikapikapika.io` community
+endpoint still exists but is third-party.
+
+### Replicate — `POST /v1/predictions` (predictions pattern)
+
+Replicate uses a single endpoint for all models; the request body
+identifies which model+version to run.
+
+```json
+{
+  "version": "owner/model:version_id",
+  "input": {"prompt": "...", "aspect_ratio": "16:9"},
+  "webhook": "https://...",
+  "webhook_events_filter": ["start", "output", "completed"]
+}
+```
+
+Status: `starting` → `processing` → `succeeded` | `failed` |
+`canceled`. Poll via `GET /v1/predictions/{prediction_id}`. Optional
+`Prefer: wait=n` header on the submit blocks up to 60s, turning the
+async API into pseudo-sync. Outputs are HTTPS URLs on
+`replicate.delivery`; default expiry is one hour.
+
+### HT-compat — `POST /v1/videos`
+
+```json
+{"model": "wan22-i2v", "image": "<base64>", "prompt": "..."}
+```
+
+**Response** (job envelope):
+
+```json
+{
+  "id": "<job-id>",
+  "model": "wan22-i2v",
+  "status": "queued",
+  "created": 1730000000,
+  "started": null,
+  "finished": null,
+  "error": null
+}
+```
+
+Poll via `GET /v1/videos/{id}`; fetch result bytes via
+`GET /v1/videos/{id}/content` (separate path; `Content-Type:
+video/mp4`).
+
+Diverges from every alternative deliberately:
+
+| Difference | Why |
+|---|---|
+| `image` accepts base64, not just a URL | SSRF safety; portable across server hardenings. |
+| `status` (not `state`/`progress`) | Matches OpenAI's pre-2026 envelope conventions. |
+| Separate `/content` endpoint instead of URL in response | Decouples job state from CDN delivery; same pattern as `/v1/files`. |
+| No `aspect_ratio` / `size` / `duration` fields pinned | Each backend exposes different parameter sets; v1.0 keeps the surface minimal and lets servers route extras as per-model knobs. |
+
+The catalog deliberately submits a *bad* image during the Phase B
+probe so the job fails fast — we want to confirm route existence
+and that the error envelope is OpenAI-canonical, not actually drive
+a multi-minute generation.
+
+---
+
+## 3D mesh generation
+
+**Convergence: emerging.** Every API is async (3D generation is
+2–10 minutes); every API returns one or more downloadable mesh
+files; most converge on GLB as the default container; the rest of
+the wire shape varies. Notably the two-step workflows
+(geometry-first then texture-second) are server-specific and not
+yet standardized.
+
+### Meshy — `POST /openapi/v2/text-to-3d` (and `image-to-3d`)
+
+Two-step workflow: a fast geometry-only `preview` task, then a
+texture `refine` task that re-uses the preview's task ID. Each
+step returns a task ID and is polled separately.
+
+**Preview (step 1):**
+
+```json
+{
+  "mode": "preview",
+  "prompt": "a low-poly fox sculpture",
+  "should_remesh": true,
+  "target_polycount": 30000,
+  "pose_mode": "a-pose",
+  "target_formats": ["glb", "fbx", "obj"]
+}
+```
+
+**Refine (step 2):**
+
+```json
+{
+  "mode": "refine",
+  "preview_task_id": "<id from step 1>",
+  "target_formats": ["glb"],
+  "enable_pbr": true,
+  "auto_size": true
+}
+```
+
+**Submit response:** `{"result": "018a210d-8ba4-..."}` (just the ID,
+no envelope).
+
+**Poll** via `GET /openapi/v2/text-to-3d/{task_id}`. On completion,
+the task object carries `model_urls` with one signed URL per
+requested format:
+
+```json
+{
+  "id": "018a210d-...",
+  "type": "text-to-3d-preview",
+  "model_urls": {
+    "glb":  "https://assets.meshy.ai/.../model.glb?Expires=...",
+    "fbx":  "https://assets.meshy.ai/.../model.fbx?Expires=...",
+    "obj":  "https://assets.meshy.ai/.../model.obj?Expires=...",
+    "mtl":  "https://assets.meshy.ai/.../model.mtl?Expires=...",
+    "usdz": "https://assets.meshy.ai/.../model.usdz?Expires=..."
+  }
+}
+```
+
+### fal.ai TRELLIS — image-to-3D, single-step
+
+Exposes the underlying model parameters directly (no preview/refine
+split). Image-only input.
+
+```js
+const result = await fal.subscribe("fal-ai/trellis", {
+  input: {
+    image_url: "https://...png",
+    seed: 42,
+    ss_guidance_strength: 7.5,
+    ss_sampling_steps: 12,
+    slat_guidance_strength: 3,
+    slat_sampling_steps: 12,
+    mesh_simplify: 0.95,
+    texture_size: "1024"
+  }
+});
+```
+
+`texture_size` ∈ `{"512", "1024", "2048"}`. Output is a single GLB
+URL:
+
+```json
+{
+  "model_mesh": {
+    "url": "https://...",
+    "content_type": "model/gltf-binary",
+    "file_name": "...",
+    "file_size": 1572864
+  },
+  "timings": {...}
+}
+```
+
+Hunyuan3D, InstantMesh, Rodin, and other 3D models on fal.ai follow
+the same `{input: {...}} → {model_mesh: {url, ...}}` shape with
+model-specific input fields.
+
+### Tripo3D — `POST /v2/openapi/task`
+
+Single endpoint, typed by `type` field. Async task ID returned;
+polling via `GET /v2/openapi/task/{task_id}` (not shown here).
+
+```json
+{
+  "type": "text_to_model",
+  "prompt": "a vintage leather armchair with wooden legs",
+  "negative_prompt": "low quality, blurry, distorted",
+  "model_version": "v2.5"
+}
+```
+
+Task types include `text_to_model`, `image_to_model`,
+`multiview_to_model` (the `images` array variant for 3+ angles).
+Additional fields: `texture_quality`, `auto_scale`, `face_limit`.
+
+### CSM — `POST /v3/sessions` (image-to-3D, multiview-to-3D)
+
+A "sessions" abstraction wrapping the same async pattern with a
+nested `input.settings` block for texture control.
+
+```json
+{
+  "image_url": "<URL>",
+  "geometry_model": "turbo",
+  "input": {"settings": {"texture_model": "pbr"}}
+}
+```
+
+`texture_model` ∈ `{"none", "baked", "pbr"}`. Auth via `x-api-key`
+header (not Bearer). Webhook on session completion; polling via
+`GET /v3/sessions/{session_id}`. Output mesh formats: `obj`, `glb`,
+`fbx`, `usdz`.
+
+### Replicate (TRELLIS, Hunyuan3D, InstantMesh hosting)
+
+All three 3D models above are also available via Replicate's
+universal predictions pattern (see Videos section). The
+model-specific `input` block matches the underlying paper /
+reference repo's argument names.
+
+### HT-compat — `POST /v1/3d/generations`
+
+```json
+{
+  "model": "trellis-image-large",
+  "image_url": "https://example.com/source.png",
+  "prompt": "a low-poly fox sculpture, game-ready",
+  "output_format": "glb",
+  "n": 1,
+  "seed": 42
+}
+```
+
+`image_url` MAY be either a `data:` URI (every server MUST accept)
+or an `http(s)://...` URL (server opt-in with SSRF hardening).
+`output_format` ∈ `{"glb", "obj", "ply", "usdz"}`. `texture_resolution`
+optional (`1024` default, `2048`, `4096`). At least one of
+`image_url` or `prompt` is required.
+
+**Response (job submission):** HTTP **`202 Accepted`** (vs 200 — the
+distinct code disambiguates "queued for async work" from "already
+done"):
+
+```json
+{
+  "id": "model3d-abc123",
+  "object": "3d.generation",
+  "created": 1234567890,
+  "model": "trellis-image-large",
+  "status": "queued",
+  "estimated_completion_seconds": 180
+}
+```
+
+**Polling** via `GET /v1/3d/generations/{id}`; on `completed`, the
+envelope adds a `data` array with one entry per variant:
+
+```json
+{
+  "data": [{
+    "url": "https://example.com/files/model3d-abc123.glb",
+    "format": "glb",
+    "size_bytes": 1572864,
+    "preview_image_url": "https://example.com/files/preview.png",
+    "expires_at": 1234654290
+  }]
+}
+```
+
+Diverges from the alternatives in three ways:
+
+| Difference | Why |
+|---|---|
+| One `output_format` per request, not multi-format like Meshy | Servers route to one ComfyUI graph; multi-format conversion is downstream client work. Avoids the format-product explosion. |
+| 202 on submit (not 200), `status` in body | Same disambiguation OpenAI Sora uses; gives clients a clean signal to start polling. |
+| `expires_at` Unix timestamp instead of "1 hour by default" | Server tells the client when to fetch by, in a machine-readable way. Matches the `audio.expires_at` field in HT-compat omni. |
+
+`/v1/3d/generations` deliberately follows `/v1/videos`'s envelope —
+both are async + URL-delivery; using the same shape lets clients
+share the polling and download logic.
+
+---
+
 ## Other "beyond OpenAI-compat" surface
 
 Where convergence is weak or absent, [HT-compat](spec/ht-compat.md)
@@ -408,12 +832,10 @@ implement it.
 
 | Task | Closest reference | HT-compat | Notes |
 |---|---|---|---|
-| Omni-modal chat (audio in/out) | vLLM-Omni serving Qwen2.5-Omni | `/v1/chat/completions[omni]` — same path, `modalities: ["text","audio"]` + `input_audio` content parts | Convergence: weak (one reference impl). |
-| Image segmentation (promptable) | Meta SAM3 (Python reference) | `/v1/segmentations` — multipart with `image` + `prompts` JSON | Convergence: none; HT-compat is the first HTTP shape. |
+| Omni-modal chat (audio in/out) | vLLM-Omni serving Qwen2.5-Omni | `/v1/chat/completions[omni]` — same path, `modalities: ["text","audio"]` + `input_audio` content parts | Convergence: weak (one reference impl). OpenAI Realtime takes a WebSocket route instead — same task, fundamentally different transport. |
+| Image segmentation (promptable) | Meta SAM3 (Python reference) | `/v1/segmentations` — multipart with `image` + `prompts` JSON | Convergence: none; HT-compat is the first HTTP shape. Replicate and fal.ai host SAM2 via their generic prediction wrappers, but neither pins a SAM-specific signature. |
 | Audio extraction (promptable) | Meta SAM-Audio (Python reference) | `/v1/audio/segmentations` | Convergence: none. |
-| Layered image generation | Qwen-Image-Layered | `/v1/images/decompositions` | Convergence: none. |
-| 3D mesh generation | TRELLIS-2, Hunyuan3D via ComfyUI | `/v1/3d/generations` — async job model | Convergence: emerging — ComfyUI workflow shims tend to share this shape. |
-| Async video generation | OpenAI Sora-shape | `/v1/videos` | Sora is the only formal reference; OSS implementers mostly extend the Sora shape with their own model-specific fields. |
+| Layered image generation | Qwen-Image-Layered | `/v1/images/decompositions` | Convergence: none. fal.ai and Replicate host this through their generic shape — no layer-specific signature pinned anywhere. |
 
 Audio source separation (Demucs-style), music generation (MusicGen),
 SAM3-video, and per-model `x_ht_compat` capability advertisement are
@@ -445,10 +867,41 @@ deferred to a future HT-compat release — see the
   `documents` arrays for rerank specifically. HT-compat 1.1 punts
   on this — v1.1 servers MUST `400` on array-valued `input` rather
   than guess.
+- **Async is universal for media generation; everything else
+  diverges.** Every video and 3D API surveyed is async (submit →
+  poll/webhook → download). Beyond that, field names are
+  inconsistent (`prompt` vs `promptText` vs `text_prompt`;
+  `aspect_ratio` vs `ratio` vs `size`; `status` vs `state`),
+  status enums differ (`queued/in_progress/completed/failed` vs
+  `starting/processing/succeeded/failed/canceled` vs
+  `completed/failure_reason`), and output delivery splits between
+  signed URLs in the response (Luma, Runway, Replicate, fal.ai)
+  and a separate content endpoint (OpenAI Sora, HT-compat). The
+  async contract converged; the everything-else didn't.
+- **Aggregators (fal.ai, Replicate) are de-facto standardization
+  layers.** When dozens of model authors ship via the same
+  aggregator, the aggregator's `{input: {...}} → {output: {...}}`
+  envelope becomes the lingua franca even though the inner `input`
+  fields stay model-specific. Many "Pika API" or "Hunyuan3D API"
+  guides on the public internet are documenting fal.ai's wrapper,
+  not the model's native HTTP surface (most of these models don't
+  have one). An HT-compat-compliant server can treat these
+  aggregator envelopes as one more inbound shape to translate from
+  — easier than writing per-model bridge code.
+- **Two-step workflows are server-specific.** Meshy's
+  preview → refine split exposes the cost/quality tradeoff
+  directly; fal.ai's TRELLIS does it all in one step; Tripo3D's
+  task-type field encodes the variant up front. None of these
+  patterns is dominant. HT-compat picks single-step and lets
+  servers expose preview-only as a model variant (e.g.
+  `trellis-preview` vs `trellis-image-large`) rather than as a
+  workflow stage in the wire shape.
 
 ---
 
 ## References
+
+**Encoder + reranking:**
 
 - Cohere v2 rerank: <https://docs.cohere.com/v2/reference/rerank>
 - Voyage AI rerank: <https://docs.voyageai.com/reference/reranker-api>
@@ -461,7 +914,27 @@ deferred to a future HT-compat release — see the
   <https://huggingface.co/docs/api-inference/tasks/>):
   question-answering, token-classification, text-classification,
   zero-shot-classification.
-- HT-compat spec: [spec/ht-compat.md](spec/ht-compat.md).
+
+**Video generation:**
+
+- OpenAI Sora video API:
+  <https://platform.openai.com/docs/guides/video-generation>
+- Runway API: <https://docs.dev.runwayml.com/api/>
+- Luma Dream Machine API: <https://docs.lumalabs.ai/docs/api>
+- fal.ai LTX Video model card:
+  <https://fal.ai/models/fal-ai/ltx-video/api>
+- Replicate predictions framework:
+  <https://replicate.com/docs/reference/http>
+
+**3D mesh generation:**
+
+- Meshy text-to-3D + image-to-3D:
+  <https://docs.meshy.ai/en/api/text-to-3d>
+- fal.ai TRELLIS: <https://fal.ai/models/fal-ai/trellis/api>
+- Tripo3D OpenAPI: <https://apidog.com/blog/how-to-use-tripo-3d-api/>
+- CSM API: <https://docs.csm.ai/>
+
+**HT-compat spec:** [spec/ht-compat.md](spec/ht-compat.md).
 
 If you maintain a server that implements one of these extensions and
 the wire shape isn't reflected here, open a PR adding your shape's
