@@ -350,6 +350,74 @@ def test_phase_b_sse_stream_fails_on_empty_delta_content():
 
 
 @respx.mock
+def test_phase_b_completions_passes_with_text_content():
+    """Legacy `/v1/completions` has its own empty-content gate via
+    `content_path: 'choices.0.text'`. Happy-path test asserts Phase B
+    PASSes when the server returns a non-empty `choices[0].text` — the
+    gate doesn't accidentally trip on valid completions.
+    """
+    respx.get(f"{BASE}/v1/models").mock(
+        return_value=httpx.Response(200, json={"data": [{"id": "chat-1"}]})
+    )
+    respx.post(f"{BASE}/v1/completions").mock(
+        return_value=httpx.Response(
+            200,
+            json={
+                "id": "cmpl-x",
+                "object": "text_completion",
+                "created": 1,
+                "model": "chat-1",
+                "choices": [
+                    {
+                        "index": 0,
+                        "text": " world",
+                        "finish_reason": "stop",
+                    }
+                ],
+                "usage": {"prompt_tokens": 1, "completion_tokens": 1, "total_tokens": 2},
+            },
+        )
+    )
+
+    p = Prober(BASE, "test", endpoints_filter=r"^/v1/completions$")
+    events = p.run()
+    rows = _events_by_endpoint(events, "/v1/completions")
+    phase_b = next((e for e in rows if e.phase == "B"), None)
+    assert phase_b is not None, [(e.phase, e.status, e.detail) for e in rows]
+    assert phase_b.status == "PASS", (phase_b.status, phase_b.detail)
+
+
+@respx.mock
+def test_phase_b_completions_fails_on_empty_text():
+    """Same empty-content failure mode the chat-completions gate catches,
+    but on the legacy `/v1/completions` row. content_path resolves to
+    `choices[0].text` instead of `choices[0].message.content`.
+    """
+    respx.get(f"{BASE}/v1/models").mock(
+        return_value=httpx.Response(200, json={"data": [{"id": "chat-1"}]})
+    )
+    respx.post(f"{BASE}/v1/completions").mock(
+        return_value=httpx.Response(
+            200,
+            json={
+                "id": "cmpl-x",
+                "object": "text_completion",
+                "model": "chat-1",
+                "choices": [{"index": 0, "text": "", "finish_reason": "stop"}],
+            },
+        )
+    )
+
+    p = Prober(BASE, "test", endpoints_filter=r"^/v1/completions$")
+    events = p.run()
+    rows = _events_by_endpoint(events, "/v1/completions")
+    phase_b = next((e for e in rows if e.phase == "B"), None)
+    assert phase_b is not None, [(e.phase, e.status, e.detail) for e in rows]
+    assert phase_b.status == "FAIL", (phase_b.status, phase_b.detail)
+    assert "empty content" in phase_b.detail
+
+
+@respx.mock
 def test_phase_b_responses_compact_passes_with_output_array():
     """OpenAI's /v1/responses/compact (used by Codex CLI compact_remote.rs)
     returns {output: [...]} with one item of type='compaction'. Phase B
