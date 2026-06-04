@@ -174,6 +174,27 @@ def _classify_kind(model_id: str) -> set[str]:
         kinds.add("segment")
     if "omni" in s or "minicpm-o" in s:
         kinds.add("omni")
+    # HT-compat v1.1: encoder-style tasks. NER / QA / sequence classification
+    # have no overlap with chat/embed model ids in practice — the common
+    # public checkpoints follow HF naming (squad, conll, mnli, go_emotions,
+    # bert-base-NER, distilbert-…-squad).
+    if "squad" in s or "-qa" in s or s.endswith("-qa") or "qa-" in s:
+        kinds.add("qa")
+    if "ner" in s or "conll" in s:
+        kinds.add("ner")
+    if any(
+        k in s
+        for k in (
+            "mnli",
+            "zero-shot",
+            "zeroshot",
+            "go_emotions",
+            "sentiment",
+            "-classifier",
+            "classification",
+        )
+    ):
+        kinds.add("classify")
     if not kinds:
         kinds.add("chat")
     return kinds

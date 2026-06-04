@@ -31,8 +31,12 @@ This project gives you two things:
 It also ships an opinionated **HT-compat profile** —
 `aioc probe URL --profile ht` — that adds endpoints for model classes
 OpenAI doesn't pin yet (promptable segmentation à la SAM3, omni-modal
-chat, reranking, layered image generation, audio extraction).
-See [`docs/spec/ht-compat.md`](docs/spec/ht-compat.md).
+chat, reranking, layered image generation, audio extraction). HT-compat
+**v1.1** extends this to encoder-only BERT-style tasks: `/v1/qa`,
+`/v1/ner`, `/v1/classifications` (cherry-picked from the HF
+`transformers` pipelines and TEI's `/predict` semantics, wrapped in
+the OpenAI-style envelope already used by `/v1/reranking`). See
+[`docs/spec/ht-compat.md`](docs/spec/ht-compat.md).
 
 ## Install
 
