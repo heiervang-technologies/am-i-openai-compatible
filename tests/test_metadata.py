@@ -12,18 +12,21 @@ cheap and makes the contract explicit.
 
 from __future__ import annotations
 
+import re
 from importlib.metadata import version as _pkg_version
 from pathlib import Path
-
-import tomllib
 
 import am_i_openai_compatible
 
 
 def _pyproject_version() -> str:
+    """Read the `version` line from pyproject.toml without a TOML parser
+    (the stdlib tomllib is 3.11+; project supports 3.10)."""
     root = Path(__file__).parent.parent
-    with (root / "pyproject.toml").open("rb") as fh:
-        return tomllib.load(fh)["project"]["version"]
+    text = (root / "pyproject.toml").read_text()
+    m = re.search(r'^version\s*=\s*"([^"]+)"', text, re.MULTILINE)
+    assert m, "pyproject.toml is missing a top-level version line"
+    return m.group(1)
 
 
 def test_dunder_version_matches_installed_metadata():
