@@ -869,12 +869,21 @@ content part; audio out under `choices[0].message.audio`.
       "role": "user",
       "content": [
         {"type": "text", "text": "Describe this audio."},
-        {"type": "input_audio", "input_audio": {"data": "<base64 wav>", "format": "wav"}}
+        {"type": "audio_url", "audio_url": {"url": "https://example.com/clip.mp3"}}
       ]
     }
   ]
 }
 ```
+
+vLLM-Omni's `audio_url` mirrors the OpenAI `image_url` convention
+for symmetry across modalities (`image_url`, `video_url`,
+`audio_url`, `text`). The `url` field accepts either an
+`http(s)://` URL the server fetches, or a local file path that
+the client SDK auto-encodes to a `data:` URI before sending.
+**Not** the OpenAI Audio API's `input_audio` content type with
+inline base64 — that's a different convention. (HT-compat picks
+`input_audio` instead; see below.)
 
 `modalities` ∈ `{["text"], ["audio"], ["text","audio"]}` (text-only
 skips the audio-generation stages for lower latency). Available
@@ -1035,7 +1044,9 @@ HTTP client that already speaks OpenAI chat works without WS
 infrastructure; load balancers and proxies don't need WS support;
 retries are normal HTTP retries; observability is HTTP observability.
 
-Request and response shape match vLLM-Omni closely:
+Request and response shape match vLLM-Omni's top-level fields
+(`modalities`, `audio: {voice, format}`, `choices[0].message.audio`)
+but diverge on the audio-input content-part type:
 
 ```json
 {
@@ -1052,11 +1063,11 @@ Request and response shape match vLLM-Omni closely:
 }
 ```
 
-Diverges from vLLM-Omni on three points where HT-compat pins
-stricter semantics:
+Differences from vLLM-Omni — three intentional, one historical:
 
 | Difference | Why |
 |---|---|
+| `input_audio` content part with inline base64 (vs vLLM-Omni's `audio_url` with URL or auto-base64'd file path) | HT-compat mirrors OpenAI Audio's `input_audio` convention rather than extending `image_url`'s symmetry. Clients targeting both OpenAI and HT-compat reuse the same content-part shape; servers that want vLLM-Omni compatibility ship an additional translator path. (The choice predates this survey; v1.2 may add `audio_url` acceptance as an alias.) |
 | `input_audio.format` MUST accept `wav`/`mp3`/`flac`/`ogg`/`m4a` | Pinned set across HT-compat servers — no surprises about container support. |
 | Unsupported `modalities` value → **501** (not 400) | "Capability gap" vs "bad input"; matches the rest of HT-compat's 501-with-envelope convention. |
 | Response `audio.expires_at` is a Unix timestamp | Machine-readable retention contract; same as `/v1/3d/generations`'s `expires_at`. |
