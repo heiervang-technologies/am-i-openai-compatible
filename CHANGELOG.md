@@ -54,6 +54,17 @@ versions follow [SemVer](https://semver.org/).
 
 ### Fixed
 
+- **`/v1/chat/completions[omni]` model selection now reads
+  `architecture.input_modalities` / `output_modalities`** from
+  `/v1/models[i]` in addition to lexical id sniffing. Surfaced by a
+  live audit where an omni-capable model (advertising `audio` in its
+  input modalities) had no `omni` substring in its id and was being
+  tagged as plain `chat` — so the omni Phase B probe SKIPped with
+  `"no model of kind 'omni'"`. New `_kinds_from_architecture` helper
+  unions with the existing lexical pass; lexical hints still win
+  when present. Regression test
+  `test_omni_detected_from_server_architecture_modalities`.
+  (Closes #15; PR #16.)
 - **Phase B now grades a `501 not implemented` response with the
   canonical OpenAI error envelope as WARN**, matching how Phase A
   has always graded it. Previously the asymmetry caused a server
@@ -77,6 +88,23 @@ versions follow [SemVer](https://semver.org/).
   `actions/upload-pages-artifact@v5`, `actions/deploy-pages@v5`.
   Third-party action pins in `action.yml` are SHA-pinned to v6.2.0
   / v7.0.1 respectively. (Commit `af210e5`.)
+
+### Docs
+
+- **New page `docs/beyond-openai-compat.md`** — honest survey of the
+  informal (and one formal, Cohere v2 rerank) HTTP shapes that real
+  OSS servers use for tasks OpenAI doesn't pin. Side-by-side request
+  / response JSON for rerank, sequence classification, extractive
+  QA, NER plus a rollup table for the rest. Wired into mkdocs nav
+  under HT-compat. (PR #19.)
+- **Repo depriv pass** — `docs/baselines.md` collapsed to the public
+  OpenAI reference baseline + a contribution recipe; README's
+  baselines table likewise; HT-compat matrix dropped
+  per-deployment columns in favor of generic server families;
+  spec/code/test references to specific private deployments and
+  fork names stripped across `docs/`, `src/`, `tests/`. The
+  HT-compat spec, catalog, and probe code stand on their own as
+  the gap-filling-standards-wise work the repo exists for. (PR #18.)
 
 ### Probe-target baselines (2026-05-16 / 2026-05-21)
 
