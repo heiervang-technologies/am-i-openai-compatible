@@ -414,6 +414,11 @@ rather than tracking-an-evolving-vendor.
 
 ### OpenAI Sora — `POST /v1/videos` (formal, deprecating 2026-09-24)
 
+Deprecation announced 2026-03-24 for shutdown 2026-09-24, per
+OpenAI's [deprecations page](https://developers.openai.com/api/docs/deprecations).
+The Sora consumer web/app was already discontinued 2026-04-26;
+the API outlives the consumer product by five months.
+
 JSON body for text-only generations; `multipart/form-data` when
 attaching an image reference.
 
