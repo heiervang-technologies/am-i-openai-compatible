@@ -305,10 +305,20 @@ return several.
 
 ### `/v1/chat/completions[omni]` — omni-modal chat
 
-**Aligned with:** vLLM-Omni's Qwen2.5-Omni serving. This is **not a
-new path** — it's a use of `/v1/chat/completions` with new content
-types and the `modalities` field. HT-compat-1.0 says: if you accept
-multi-modal in/out, you do it with this exact shape.
+**Aligned with:** vLLM-Omni's Qwen2.5-Omni serving for the
+top-level surface (`modalities` field, `audio: {voice, format}`,
+`choices[0].message.audio` in the response, SSE `delta.audio.data`
+on streams). The audio-input content part diverges intentionally:
+vLLM-Omni uses `audio_url` (mirroring `image_url` / `video_url` for
+cross-modality symmetry); HT-compat uses `input_audio` to match
+OpenAI's Audio API convention, so clients targeting both
+OpenAI and HT-compat reuse the same content-part shape. A future
+HT-compat may also accept `audio_url` as an alias.
+
+This is **not a new path** — it's a use of `/v1/chat/completions`
+with new content types and the `modalities` field. HT-compat-1.0
+says: if you accept multi-modal in/out, you do it with this exact
+shape.
 
 **Request**
 
