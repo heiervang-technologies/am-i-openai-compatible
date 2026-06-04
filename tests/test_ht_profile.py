@@ -286,6 +286,72 @@ def test_phase_b_chat_omni_passes_with_audio_in_message():
 
 
 @respx.mock
+def test_omni_detected_from_server_architecture_modalities():
+    """Regression for issue #15: a model id without an 'omni' substring
+    must still be picked for the omni endpoint when the server's
+    /v1/models[i].architecture.input_modalities or .output_modalities
+    list contains 'audio'. Lithium's gemma-4-e4b is the live example —
+    no 'omni' in the id but architecture.input_modalities is
+    ['text', 'image', 'audio'].
+    """
+    respx.get(f"{BASE}/v1/models").mock(
+        return_value=httpx.Response(
+            200,
+            json={
+                "data": [
+                    {
+                        "id": "gemma-4-e4b",
+                        "architecture": {
+                            "input_modalities": ["text", "image", "audio"],
+                            "output_modalities": ["text"],
+                        },
+                    },
+                ]
+            },
+        )
+    )
+    audio_b64 = base64.b64encode(b"\x00" * 100).decode()
+    respx.post(f"{BASE}/v1/chat/completions").mock(
+        return_value=httpx.Response(
+            200,
+            json={
+                "id": "chatcmpl-1",
+                "object": "chat.completion",
+                "model": "gemma-4-e4b",
+                "choices": [
+                    {
+                        "index": 0,
+                        "message": {
+                            "role": "assistant",
+                            "content": "ok",
+                            "audio": {
+                                "id": "audio-1",
+                                "data": audio_b64,
+                                "format": "wav",
+                                "expires_at": 0,
+                            },
+                        },
+                        "finish_reason": "stop",
+                    }
+                ],
+            },
+        )
+    )
+
+    p = Prober(BASE, "test", profile="ht", endpoints_filter=r"chat/completions\[omni\]")
+    events = p.run()
+    rows = _events_by_endpoint(events, "/v1/chat/completions[omni]")
+    # The signal we care about: Phase B did NOT SKIP with "no model of kind
+    # 'omni'", i.e. the model was picked despite having no 'omni' substring.
+    phase_b = next((e for e in rows if e.phase == "B"), None)
+    assert phase_b is not None, [(e.phase, e.status, e.detail) for e in rows]
+    assert phase_b.status != "SKIP" or "no model of kind 'omni'" not in phase_b.detail, (
+        phase_b.status,
+        phase_b.detail,
+    )
+
+
+@respx.mock
 def test_phase_b_3d_generations_passes_with_job_envelope():
     """Async job submission shape (mirrors /v1/videos): server returns
     {id, status} on POST; clients poll GET /v1/3d/generations/{id}
