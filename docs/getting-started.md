@@ -9,7 +9,7 @@ Not on PyPI yet — install straight from this repo:
 pip install git+https://github.com/heiervang-technologies/am-i-openai-compatible.git
 
 # Pin to a tag (recommended for CI):
-pip install git+https://github.com/heiervang-technologies/am-i-openai-compatible.git@v0.3.1
+pip install git+https://github.com/heiervang-technologies/am-i-openai-compatible.git@v0.4.0
 ```
 
 Or, from a checkout (recommended for development):
