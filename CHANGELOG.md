@@ -6,6 +6,14 @@ versions follow [SemVer](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.4.0] — 2026-06-05
+
+A minor bump on the back of the HT-compat 1.0 → 1.1 spec promotion
+plus a substantial docs and tooling pass. Eight merges between
+2026-05-16 (v0.3.1) and the cut: catalog adds, probe gates,
+single-source version metadata, and a new "Beyond OpenAI-compat"
+survey page.
+
 ### HT-compat 1.1 — encoder-only BERT-style tasks
 
 - Three new `kind="ours"` endpoints, gated under `--profile ht`:
@@ -89,14 +97,56 @@ versions follow [SemVer](https://semver.org/).
   Third-party action pins in `action.yml` are SHA-pinned to v6.2.0
   / v7.0.1 respectively. (Commit `af210e5`.)
 
+### Refactored
+
+- **Single-source version metadata** — `__init__.py` no longer
+  hardcodes `__version__`; it reads from
+  `importlib.metadata.version(...)`. `pyproject.toml` becomes the
+  sole source of truth and drift between the two files is
+  structurally impossible. Surfaced by the v0.3.1 drift bug where
+  both files reported `"0.3.0"` through both v0.3.0 AND v0.3.1
+  tags. (PR #26.)
+- Version metadata synced to v0.3.1 in a one-shot fix (PR #25) so
+  installs from the v0.3.1 tag report the right number until v0.4.0.
+
+### Tests
+
+- **Package-metadata invariants** in `tests/test_metadata.py`:
+  `__version__` matches `importlib.metadata.version(...)` and the
+  `pyproject.toml [project].version` line. Catches the next
+  pyproject-vs-dunder drift at PR time. (PR #26.)
+- **Phase B coverage** for `/v1/videos` (catalog row was the only
+  `ours` row without a happy-path test) and `/v1/completions`
+  (the empty-content gate from #12 had only chat-completions
+  coverage — a regression on the gate for legacy completions
+  would slip through). (PR #22.)
+
 ### Docs
 
 - **New page `docs/beyond-openai-compat.md`** — honest survey of the
   informal (and one formal, Cohere v2 rerank) HTTP shapes that real
   OSS servers use for tasks OpenAI doesn't pin. Side-by-side request
   / response JSON for rerank, sequence classification, extractive
-  QA, NER plus a rollup table for the rest. Wired into mkdocs nav
-  under HT-compat. (PR #19.)
+  QA, NER, async video generation (Sora / Runway / Luma / fal.ai /
+  Replicate), 3D mesh generation (Meshy / TRELLIS / Tripo3D / CSM),
+  and omni-modal chat (vLLM-Omni REST extension vs OpenAI Realtime
+  / Gemini Live / ElevenLabs WebSocket sessions). Wired into mkdocs
+  nav under HT-compat. (PRs #19, #20, #29.)
+- **HT-compat spec alignment honesty** — the
+  `/v1/chat/completions[omni]` "Aligned with: vLLM-Omni" line was
+  overstating the alignment. vLLM-Omni uses `audio_url` content
+  parts (mirroring `image_url`/`video_url`); HT-compat uses
+  `input_audio` (mirroring OpenAI Audio's convention). The top-level
+  fields ARE aligned, but the audio-input content-part diverges by
+  design; spec now spells out which fields align vs which diverge,
+  and why HT-compat picked `input_audio`. (PR #24.)
+- **Release checklist** added to `docs/contributing.md` —
+  8-step flow that the v0.3.1 release should have followed but
+  didn't (step 3 was missed, causing the drift). Step 8 (verify
+  `aioc --version` reports the new number from a fresh install) is
+  the tag-drift guard the in-source invariants can't provide. (PR #27.)
+- **CHANGELOG backfill** — entries for PRs #16, #18, #19 that
+  shipped without `[Unreleased]` entries. (PR #23.)
 - **Repo depriv pass** — `docs/baselines.md` collapsed to the public
   OpenAI reference baseline + a contribution recipe; README's
   baselines table likewise; HT-compat matrix dropped
