@@ -170,7 +170,13 @@ def _classify_kind(model_id: str) -> set[str]:
         kinds.add("3d")
     if "sam-audio" in s or "audio-sam" in s:
         kinds.add("audio-segment")
-    if "sam" in s and "audio" not in s:
+    # `sam` is a 3-letter substring — bare `"sam" in s` false-positives
+    # on common model names like "samantha-*". Require a word-boundary
+    # neighbour so we match real SAM family ids (sam3, sam2-base,
+    # facebook-sam-…) but not unrelated names.
+    if ("sam" in s and "audio" not in s) and (
+        re.search(r"\bsam\b", s) or re.search(r"sam[0-9-]", s)
+    ):
         kinds.add("segment")
     if "omni" in s or "minicpm-o" in s:
         kinds.add("omni")
@@ -180,7 +186,16 @@ def _classify_kind(model_id: str) -> set[str]:
     # bert-base-NER, distilbert-…-squad).
     if "squad" in s or "-qa" in s or s.endswith("-qa") or "qa-" in s:
         kinds.add("qa")
-    if "ner" in s or "conll" in s:
+    # `ner` is a 3-letter substring — bare `"ner" in s` false-positives
+    # on "owner", "tuner", "generator". Require a word-boundary
+    # neighbour so we match `bert-base-NER`, `dslim/bert-ner-…`, etc.
+    if (
+        re.search(r"\bner\b", s)
+        or "-ner-" in s
+        or "-ner" == s[-4:]
+        or s.startswith("ner-")
+        or "conll" in s
+    ):
         kinds.add("ner")
     if any(
         k in s
