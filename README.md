@@ -9,9 +9,10 @@
 ![aioc demo](docs/assets/aioc-demo.gif)
 
 > *aioc probe against a custom llama.cpp build with HT-compat
-> extensions: 27 endpoints graded in 0.2s — including
-> `/v1/reranking` and `/v1/chat/completions[omni]`. Source:
-> [`docs/assets/aioc-demo.tape`](docs/assets/aioc-demo.tape).*
+> extensions: 30 endpoints graded in 0.2s — including
+> `/v1/reranking`, `/v1/chat/completions[omni]`, and the v1.1
+> encoder rows (`/v1/qa`, `/v1/ner`, `/v1/classifications`).
+> Source: [`docs/assets/aioc-demo.tape`](docs/assets/aioc-demo.tape).*
 
 The term "OpenAI-compatible" gets used so loosely it's nearly worthless.
 Every implementation — llama.cpp, vLLM, Ollama, LM Studio, TabbyAPI,
