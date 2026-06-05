@@ -6,6 +6,30 @@ versions follow [SemVer](https://semver.org/).
 
 ## [Unreleased]
 
+### Fixed
+
+- **`_classify_kind` no longer false-positives on 3-letter substring
+  hits.** Bare `"sam" in s` matched any model id containing "sam"
+  (e.g. `samantha-1.2-mistral-7b` — a Vicuna-family LLM) and would
+  tag it as a SAM segmentation model. Bare `"ner" in s` matched
+  "owner", "tuner", "turner". Both checks now require a word-
+  boundary neighbour: SAM uses `re.search(r"\bsam\b", s)` plus
+  `sam[0-9-]` for `sam2`/`sam3`/`sam-vit-h`; NER uses an explicit
+  separator set plus `conll-*`. Real-world impact is small (the
+  bare-substring patterns matched real public ids), but the fix
+  cuts the false-positive Phase B probe budget on multi-model
+  servers. (PR #32.)
+
+### Tests
+
+- **Phase B coverage** for the remaining six catalog rows that had
+  no respx mocks: `/v1/audio/speech`, `/v1/audio/transcriptions`
+  (multipart), `/v1/images/generations`, `/v1/images/edits`
+  (multipart), plus regression guards asserting Phase B is
+  intentionally skipped on `/v1/files` and `/v1/batches` (admin
+  routes; existence is the meaningful test). 90 tests now passing.
+  (PR #31.)
+
 ## [0.4.0] — 2026-06-05
 
 A minor bump on the back of the HT-compat 1.0 → 1.1 spec promotion
