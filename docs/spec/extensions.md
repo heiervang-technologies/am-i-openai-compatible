@@ -103,7 +103,7 @@ Probe behavior:
 OSS-server status: essentially nobody implements the Realtime API
 shape today. Forks that ship a WS event surface (Hume EVI, Sesame
 CSM, in-house S2S) almost always use their own event vocabulary;
-HT-compat could pin a vendor-neutral version in a future v1.1 if a
+HT-compat could pin a vendor-neutral version in a future v1.2 if a
 reference implementation emerges. For now the catalog probes the
 OpenAI shape as `kind="ext"`.
 

@@ -99,8 +99,9 @@ reranking) SHOULD still advertise `X-HT-Compat: 1.0` and return 501
 with an explanatory error envelope on the unsupported endpoints. This
 lets clients soft-detect partial compliance.
 
-`GET /v1/ht/capabilities` is reserved for v1.1; its absence in v1.0 is
-deliberate — discover by trying the endpoints.
+`GET /v1/ht/capabilities` is reserved for a future revision (v1.2+);
+its absence in v1.0/v1.1 is deliberate — discover by trying the
+endpoints.
 
 ---
 
@@ -173,7 +174,7 @@ applies to `seg-...`, `audio-seg-...`, `imgdecomp-...`, and
 
 **Aligned with:** Meta SAM3 (image+video segmentation, multi-prompt).
 SAM3 itself has no REST API yet; HT-compat proposes one. Single image
-in v1.0; video deferred to v1.1 (`/v1/video/segmentations`).
+in v1.0/v1.1; video deferred to v1.2 (`/v1/video/segmentations`).
 
 **Request**
 
@@ -214,8 +215,8 @@ Coordinates are normalized `[0, 1]`. `label: 1` means foreground,
 All prompts in a single request collapse to one object query (SAM
 convention). The response returns `masks` for that single query;
 clients that want multiple independent queries SHOULD make multiple
-requests. Future v1.1 may add a `prompt_index` echo if multi-query
-batching becomes worth supporting.
+requests. A future revision (v1.2+) may add a `prompt_index` echo if
+multi-query batching becomes worth supporting.
 
 **Response**
 
@@ -418,7 +419,7 @@ that clients MAY surface for logging but MUST NOT echo back in
 subsequent turns — every audio reference in a follow-up request is a
 full re-`base64` of an `input_audio` content part. Multi-turn
 audio-id reuse (analogous to OpenAI Realtime's `previous_item_id`)
-is reserved for v1.1.
+is reserved for a future revision (v1.2+).
 
 `audio.expires_at` is a Unix timestamp after which the server is no
 longer obligated to retain the audio bytes. Clients that need a
@@ -431,8 +432,8 @@ deltas appear as `delta.audio.data` (base64 chunks) interleaved with
 text deltas. `[DONE]` rules unchanged. In HT-compat-1.0, the framing
 of audio chunks (codec block boundaries vs arbitrary base64 slices)
 is **implementation-defined** — clients MUST concatenate `data`
-across chunks before decoding the container. v1.1 may pin
-codec-aligned framing once a reference impl exists to crib from.
+across chunks before decoding the container. A future revision (v1.2+)
+may pin codec-aligned framing once a reference impl exists to crib from.
 
 ---
 
@@ -506,7 +507,7 @@ input is not a portable v1.0 capability. A server that doesn't
 support text-to-3D MUST return **400** with a descriptive
 `error.message` when called with `prompt` alone. Clients
 targeting v1.0 portability SHOULD always send `image_url`.
-Text-to-3D models (e.g. TripoSR, MV-Adapter) are v1.1 territory.
+Text-to-3D models (e.g. TripoSR, MV-Adapter) are v1.2 territory.
 
 **Response (job submission)**
 
