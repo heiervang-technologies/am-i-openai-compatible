@@ -14,7 +14,7 @@ inputs:
     required: false
     default: ""
   aioc-version:
-    description: "Which build to install. Not on PyPI yet — accepts 'main' (latest commit on the default branch) or any pip-installable git spec, e.g. 'git+https://github.com/heiervang-technologies/am-i-openai-compatible.git@v0.3.1' to pin to a tag. Default 'main'."
+    description: "Which build to install. Not on PyPI yet — accepts 'main' (latest commit on the default branch) or any pip-installable git spec, e.g. 'git+https://github.com/heiervang-technologies/am-i-openai-compatible.git@v0.4.0' to pin to a tag. Default 'main'."
     required: false
     default: "main"
   python-version:
