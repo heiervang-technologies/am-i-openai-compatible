@@ -72,6 +72,36 @@ def test_classify_kind_uses_lexical_hints():
     assert "chat" in _classify_kind("some-unknown-model")
 
 
+def test_classify_kind_sam_requires_word_boundary():
+    """`"sam" in s` would false-positive on "samantha-*" and similar.
+    Real SAM family ids (sam3, sam2-base, facebook-sam-vit-h) must
+    still match, but bare-substring matches on unrelated names must
+    not.
+    """
+    assert "segment" in _classify_kind("sam3")
+    assert "segment" in _classify_kind("sam2-base")
+    assert "segment" in _classify_kind("facebook-sam-vit-h")
+    # False-positive guard: "samantha" is a Vicuna-family LLM, not a SAM model.
+    assert "segment" not in _classify_kind("samantha-1.2-mistral-7b")
+    # Audio-SAM still correctly tagged audio-segment, NOT segment.
+    assert "audio-segment" in _classify_kind("sam-audio-v1")
+    assert "segment" not in _classify_kind("sam-audio-v1")
+
+
+def test_classify_kind_ner_requires_word_boundary():
+    """`"ner" in s` would false-positive on "owner", "tuner",
+    "generator". Real NER ids (bert-base-NER, dslim/bert-base-ner,
+    conll-*) must still match.
+    """
+    assert "ner" in _classify_kind("bert-base-NER")
+    assert "ner" in _classify_kind("dslim/bert-base-ner")
+    assert "ner" in _classify_kind("conll-2003")
+    # False-positive guards: common "ner"-substring tokens.
+    assert "ner" not in _classify_kind("owner-model-v1")
+    assert "ner" not in _classify_kind("tuner-7b")
+    assert "ner" not in _classify_kind("turner-chat")
+
+
 # ---------------------------------------------------------------------------
 # Prober — Phase A behavior
 # ---------------------------------------------------------------------------
