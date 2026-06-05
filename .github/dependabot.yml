@@ -1,0 +1,27 @@
+# Dependabot config: keep GitHub Actions pins fresh so we don't hit
+# another deadline-driven manual bump like af210e5 (Node-24 cutover
+# 2026-06-02). Monthly cadence + grouped PRs keep noise low.
+#
+# Python deps are intentionally NOT tracked here — the project pins
+# nothing strict (httpx, pydantic, websockets, ruff, pytest) and the
+# package is install-from-git, not from PyPI. Tracking minor bumps
+# would add review burden without proportional security or
+# correctness value.
+
+version: 2
+updates:
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "monthly"
+    open-pull-requests-limit: 5
+    groups:
+      github-actions:
+        patterns:
+          - "*"
+    commit-message:
+      prefix: "ci"
+      include: "scope"
+    labels:
+      - "dependencies"
+      - "ci"
