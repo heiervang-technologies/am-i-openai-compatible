@@ -6,6 +6,25 @@ versions follow [SemVer](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+
+- **`/v1/fine_tuning/jobs` catalog row** — GET, ext kind. Closes a
+  spec/catalog consistency gap: the endpoint was listed in
+  `docs/spec/canonical-surface.md` and `docs/compatibility-matrix.md`
+  but `endpoints.py` never had it, so the probe never tested for
+  its existence. Mirrors `/v1/files` and `/v1/batches` (admin-list
+  routes; Phase B intentionally skipped). 31 catalog rows now.
+  (PR #51.)
+
+### CI
+
+- **CI workflow hardening** — `fail-fast: false` so the full Python
+  matrix (3.10-3.14) is seen on every failure instead of the first
+  failing version cancelling the rest; `concurrency` block cancels
+  in-progress runs on the same ref to save runner-minutes on PR
+  iteration; `permissions: contents: read` at workflow level for
+  least-privilege. (PR #50.)
+
 ## [0.4.1] — 2026-06-05
 
 A patch release on the back of three real bug fixes (one false-
