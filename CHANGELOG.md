@@ -6,6 +6,14 @@ versions follow [SemVer](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.4.1] — 2026-06-05
+
+A patch release on the back of three real bug fixes (one false-
+positive class in `_classify_kind`, two empty-content gates that
+v0.4.0 left uncovered) plus the post-release docs / CI / housekeeping
+that accumulated. 13 merges between v0.4.0 (this morning) and the
+cut.
+
 ### Fixed
 
 - **`_classify_kind` no longer false-positives on short-token substring
@@ -25,6 +33,11 @@ versions follow [SemVer](https://semver.org/).
   PASS even with a 0-byte body. A TTS shim whose synthesis stage
   crashes silently after the HTTP envelope is sent would have
   PASS'd. Both binary paths now FAIL on empty body. (PR #37.)
+- **Empty-content gate now covers omni `audio.data`.** The
+  `/v1/chat/completions[omni]` catalog row checked the key existed
+  but not that the base64 audio was non-empty. An omni server that
+  returns `audio.data = ""` would have PASS'd. Same bug class as
+  the chat gate (PR #12) and the binary gate (#37). (PR #46.)
 
 ### Tests
 
@@ -34,7 +47,9 @@ versions follow [SemVer](https://semver.org/).
   (multipart), plus regression guards asserting Phase B is
   intentionally skipped on `/v1/files` and `/v1/batches`. Plus
   two new tests for `/v1/audio/voices` (object-list and
-  bare-string-list forms). 96 tests now passing. (PRs #31, #36.)
+  bare-string-list forms). Plus a happy/sad-path pair for the
+  omni audio.data empty-content gate (#46). 97 tests now
+  passing. (PRs #31, #36, #46.)
 
 ### Docs
 
@@ -51,9 +66,10 @@ versions follow [SemVer](https://semver.org/).
   `extensions.md`. v1.1 shipped in v0.4.0, so those forward-looking
   notes meant the next minor (v1.2), not the one that just landed.
   (PR #42.)
-- **Post-v0.4.0 README + CHANGELOG cleanups** — bumped catalog
-  count caption to 30, refreshed install-pin examples to `@v0.4.0`,
-  backfilled missing Unreleased entries. (PRs #33, #38, this PR.)
+- **Post-v0.4.0 README + CHANGELOG + action.yml cleanups** — bumped
+  catalog count caption to 30, refreshed install-pin examples in
+  README / getting-started / action.yml to `@v0.4.0`, backfilled
+  missing Unreleased entries. (PRs #33, #38, #45, #47.)
 - **Demo GIF refreshed** against `api.openai.com` (public-reproducible)
   using the v0.4.0 `aioc render` subcommand. Drops the depriv-stale
   reference to a private fork. (PR #43.)
