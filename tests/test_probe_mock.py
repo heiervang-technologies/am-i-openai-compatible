@@ -546,7 +546,14 @@ def test_phase_b_images_generations_passes_with_data_array():
     respx.post(f"{BASE}/v1/images/generations").mock(
         return_value=httpx.Response(
             200,
-            json={"created": 1, "data": [{"b64_json": "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII="}]},
+            json={
+                "created": 1,
+                "data": [
+                    {
+                        "b64_json": "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII="
+                    }
+                ],
+            },
         )
     )
 
@@ -567,7 +574,14 @@ def test_phase_b_images_edits_passes_with_data_array():
     respx.post(f"{BASE}/v1/images/edits").mock(
         return_value=httpx.Response(
             200,
-            json={"created": 1, "data": [{"b64_json": "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII="}]},
+            json={
+                "created": 1,
+                "data": [
+                    {
+                        "b64_json": "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII="
+                    }
+                ],
+            },
         )
     )
 
