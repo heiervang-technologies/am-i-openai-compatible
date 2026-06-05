@@ -608,13 +608,20 @@ class Prober:
         # 2xx — including 202 Accepted for async job submission. Shape
         # validation below handles whether the envelope is correct.
 
-        # Audio/image responses are non-JSON.
+        # Audio/image responses are non-JSON. Both need an empty-content
+        # gate analogous to the JSON one in `_validate_shape`: a server
+        # returning the right Content-Type but a zero-byte body is the
+        # binary version of "well-shaped 200 with no useful content".
         if ep.expects == "audio":
             ct = r.headers.get("content-type", "")
             if not (ct.startswith("audio/") or ct == "application/octet-stream"):
                 return "FAIL", f"expected audio/*, got {ct!r}", r.status_code
+            if len(r.content) == 0:
+                return "FAIL", f"empty audio body (200 OK, ct={ct!r})", r.status_code
             return "PASS", f"{ct}, {len(r.content)}B", r.status_code
         if ep.expects == "image":
+            if len(r.content) == 0:
+                return "FAIL", "empty image body (200 OK)", r.status_code
             return "PASS", f"image bytes={len(r.content)}", r.status_code
 
         try:
