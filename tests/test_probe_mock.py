@@ -449,6 +449,151 @@ def test_phase_b_responses_compact_passes_with_output_array():
 
 
 @respx.mock
+def test_files_phase_b_intentionally_skipped():
+    """`/v1/files` is admin/list — Phase B is intentionally skipped
+    (see admin-routes branch in `probe.py`). Existence is the
+    meaningful test for these routes; templating a Phase B body would
+    require a real file upload (`/v1/uploads` flow). Regression guard:
+    only Phase A events should emit for this row.
+    """
+    respx.get(f"{BASE}/v1/models").mock(
+        return_value=httpx.Response(200, json={"data": [{"id": "chat-1"}]})
+    )
+    respx.get(f"{BASE}/v1/files").mock(
+        return_value=httpx.Response(200, json={"object": "list", "data": []})
+    )
+
+    p = Prober(BASE, "test", endpoints_filter=r"^/v1/files$")
+    events = p.run()
+    rows = _events_by_endpoint(events, "/v1/files")
+    assert any(e.phase == "A" and e.status == "PASS" for e in rows), [
+        (e.phase, e.status, e.detail) for e in rows
+    ]
+    assert not any(e.phase == "B" for e in rows), (
+        "Phase B should be skipped for /v1/files (admin/list route)"
+    )
+
+
+@respx.mock
+def test_batches_phase_b_intentionally_skipped():
+    """`/v1/batches` mirrors `/v1/files` — admin/list, Phase B skipped.
+    Regression guard for the same admin-routes branch in `probe.py`.
+    """
+    respx.get(f"{BASE}/v1/models").mock(
+        return_value=httpx.Response(200, json={"data": [{"id": "chat-1"}]})
+    )
+    respx.get(f"{BASE}/v1/batches").mock(
+        return_value=httpx.Response(200, json={"object": "list", "data": []})
+    )
+
+    p = Prober(BASE, "test", endpoints_filter=r"^/v1/batches$")
+    events = p.run()
+    rows = _events_by_endpoint(events, "/v1/batches")
+    assert any(e.phase == "A" and e.status == "PASS" for e in rows), [
+        (e.phase, e.status, e.detail) for e in rows
+    ]
+    assert not any(e.phase == "B" for e in rows), (
+        "Phase B should be skipped for /v1/batches (admin/list route)"
+    )
+
+
+@respx.mock
+def test_phase_b_audio_speech_passes_with_audio_bytes():
+    """TTS — expects=audio sentinel. The probe checks the response is
+    binary audio (any non-empty bytes content with audio/* content-type).
+    """
+    respx.get(f"{BASE}/v1/models").mock(
+        return_value=httpx.Response(200, json={"data": [{"id": "tts-kokoro-v1"}]})
+    )
+    # Minimal WAV header + a few sample bytes
+    wav_bytes = b"RIFF\x24\x00\x00\x00WAVEfmt " + b"\x00" * 16 + b"data" + b"\x00" * 4
+    respx.post(f"{BASE}/v1/audio/speech").mock(
+        return_value=httpx.Response(200, headers={"content-type": "audio/wav"}, content=wav_bytes)
+    )
+
+    p = Prober(BASE, "test", endpoints_filter=r"^/v1/audio/speech$")
+    events = p.run()
+    rows = _events_by_endpoint(events, "/v1/audio/speech")
+    assert any(e.phase == "B" and e.status == "PASS" for e in rows), [
+        (e.phase, e.status, e.detail) for e in rows
+    ]
+
+
+@respx.mock
+def test_phase_b_audio_transcriptions_passes_with_text_response():
+    """ASR — multipart upload (audio file), response is JSON `{text}`."""
+    respx.get(f"{BASE}/v1/models").mock(
+        return_value=httpx.Response(200, json={"data": [{"id": "whisper-large-v3"}]})
+    )
+    respx.post(f"{BASE}/v1/audio/transcriptions").mock(
+        return_value=httpx.Response(200, json={"text": "hello world"})
+    )
+
+    p = Prober(BASE, "test", endpoints_filter=r"^/v1/audio/transcriptions$")
+    events = p.run()
+    rows = _events_by_endpoint(events, "/v1/audio/transcriptions")
+    assert any(e.phase == "B" and e.status == "PASS" for e in rows), [
+        (e.phase, e.status, e.detail) for e in rows
+    ]
+
+
+@respx.mock
+def test_phase_b_images_generations_passes_with_data_array():
+    """Image generation — expects=data.0. Mock a 1x1 PNG b64 placeholder."""
+    respx.get(f"{BASE}/v1/models").mock(
+        return_value=httpx.Response(200, json={"data": [{"id": "flux-schnell"}]})
+    )
+    respx.post(f"{BASE}/v1/images/generations").mock(
+        return_value=httpx.Response(
+            200,
+            json={
+                "created": 1,
+                "data": [
+                    {
+                        "b64_json": "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII="
+                    }
+                ],
+            },
+        )
+    )
+
+    p = Prober(BASE, "test", endpoints_filter=r"^/v1/images/generations$")
+    events = p.run()
+    rows = _events_by_endpoint(events, "/v1/images/generations")
+    assert any(e.phase == "B" and e.status == "PASS" for e in rows), [
+        (e.phase, e.status, e.detail) for e in rows
+    ]
+
+
+@respx.mock
+def test_phase_b_images_edits_passes_with_data_array():
+    """Image edits — multipart, expects=data.0."""
+    respx.get(f"{BASE}/v1/models").mock(
+        return_value=httpx.Response(200, json={"data": [{"id": "flux-kontext-edit"}]})
+    )
+    respx.post(f"{BASE}/v1/images/edits").mock(
+        return_value=httpx.Response(
+            200,
+            json={
+                "created": 1,
+                "data": [
+                    {
+                        "b64_json": "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII="
+                    }
+                ],
+            },
+        )
+    )
+
+    p = Prober(BASE, "test", endpoints_filter=r"^/v1/images/edits$")
+    events = p.run()
+    rows = _events_by_endpoint(events, "/v1/images/edits")
+    assert any(e.phase == "B" and e.status == "PASS" for e in rows), [
+        (e.phase, e.status, e.detail) for e in rows
+    ]
+
+
+@respx.mock
 def test_phase_b_sse_stream_with_done_passes():
     respx.get(f"{BASE}/v1/models").mock(
         return_value=httpx.Response(200, json={"data": [{"id": "chat-1"}]})
