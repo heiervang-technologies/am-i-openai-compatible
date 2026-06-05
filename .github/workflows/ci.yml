@@ -6,10 +6,24 @@ on:
   pull_request:
     branches: [main]
 
+permissions:
+  contents: read
+
+concurrency:
+  # Cancel in-progress runs for the same ref when a new commit lands.
+  # Saves runner-minutes on rapid pushes; main runs (no PR head) get
+  # the ref-name fallback so concurrent main pushes still queue.
+  group: ${{ github.workflow }}-${{ github.head_ref || github.ref }}
+  cancel-in-progress: true
+
 jobs:
   lint-and-test:
     runs-on: ubuntu-latest
     strategy:
+      # Don't abort sibling Python versions when one fails — seeing
+      # the FULL matrix verdict on every run beats a fast no-signal
+      # cancel.
+      fail-fast: false
       matrix:
         # Adding 3.13 + 3.14 to surface forward-compat issues sooner.
         # Local dev runs 3.14 already; CI should catch any regressions
