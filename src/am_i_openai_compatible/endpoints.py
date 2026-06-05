@@ -325,6 +325,14 @@ ENDPOINTS: list[Endpoint] = [
         notes="OpenAI Batch API; usually absent in OSS shims",
     ),
     Endpoint(
+        path="/v1/fine_tuning/jobs",
+        method="GET",
+        group="fine-tuning",
+        kind="ext",
+        expects=("data",),
+        notes="OpenAI fine-tuning jobs list; OSS servers don't fine-tune via API",
+    ),
+    Endpoint(
         path="/v1/uploads",
         method="POST",
         group="files",

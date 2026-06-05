@@ -557,6 +557,32 @@ def test_files_phase_b_intentionally_skipped():
 
 
 @respx.mock
+def test_fine_tuning_jobs_phase_b_intentionally_skipped():
+    """`/v1/fine_tuning/jobs` mirrors `/v1/files` and `/v1/batches` —
+    admin/list route where Phase B is intentionally skipped (existence
+    is the meaningful test). Added in the spec/catalog consistency
+    audit (was in canonical-surface.md and the compat matrix but
+    missing from endpoints.py).
+    """
+    respx.get(f"{BASE}/v1/models").mock(
+        return_value=httpx.Response(200, json={"data": [{"id": "chat-1"}]})
+    )
+    respx.get(f"{BASE}/v1/fine_tuning/jobs").mock(
+        return_value=httpx.Response(200, json={"object": "list", "data": []})
+    )
+
+    p = Prober(BASE, "test", endpoints_filter=r"^/v1/fine_tuning/jobs$")
+    events = p.run()
+    rows = _events_by_endpoint(events, "/v1/fine_tuning/jobs")
+    assert any(e.phase == "A" and e.status == "PASS" for e in rows), [
+        (e.phase, e.status, e.detail) for e in rows
+    ]
+    assert not any(e.phase == "B" for e in rows), (
+        "Phase B should be skipped for /v1/fine_tuning/jobs (admin/list route)"
+    )
+
+
+@respx.mock
 def test_batches_phase_b_intentionally_skipped():
     """`/v1/batches` mirrors `/v1/files` — admin/list, Phase B skipped.
     Regression guard for the same admin-routes branch in `probe.py`.
