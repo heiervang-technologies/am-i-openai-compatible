@@ -352,6 +352,40 @@ def test_omni_detected_from_server_architecture_modalities():
 
 
 @respx.mock
+def test_phase_b_videos_passes_with_job_envelope():
+    """Async video job submission shape: server returns {id, status} on
+    POST; clients poll GET /v1/videos/{id} and fetch bytes via
+    /v1/videos/{id}/content when status flips to completed. Phase B only
+    validates the submission envelope — we deliberately submit a tiny
+    1-second 1px image so the job either succeeds fast or fails fast,
+    but never blocks the probe budget on real generation."""
+    respx.get(f"{BASE}/v1/models").mock(
+        return_value=httpx.Response(200, json={"data": [{"id": "wan22-i2v"}]})
+    )
+    respx.post(f"{BASE}/v1/videos").mock(
+        return_value=httpx.Response(
+            200,
+            json={
+                "id": "video-abc123",
+                "model": "wan22-i2v",
+                "status": "queued",
+                "created": 1730000000,
+                "started": None,
+                "finished": None,
+                "error": None,
+            },
+        )
+    )
+
+    p = Prober(BASE, "test", profile="ht", endpoints_filter=r"^/v1/videos$")
+    events = p.run()
+    rows = _events_by_endpoint(events, "/v1/videos")
+    assert any(e.phase == "B" and e.status == "PASS" for e in rows), [
+        (e.phase, e.status, e.detail) for e in rows
+    ]
+
+
+@respx.mock
 def test_phase_b_3d_generations_passes_with_job_envelope():
     """Async job submission shape (mirrors /v1/videos): server returns
     {id, status} on POST; clients poll GET /v1/3d/generations/{id}
