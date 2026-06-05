@@ -829,6 +829,281 @@ share the polling and download logic.
 
 ---
 
+## Omni-modal chat (audio in / audio out)
+
+**Convergence: split along an architectural fork.** Two completely
+different transport models, both with serious adopters:
+
+- **REST extension** — add audio content parts to
+  `/v1/chat/completions`, return audio in
+  `choices[0].message.audio.data`. Stateless per request. Works
+  through any HTTP client, library, proxy, or load balancer that
+  already speaks OpenAI chat. Adopted by vLLM-Omni; followed by
+  HT-compat.
+- **WebSocket session** — open a persistent bidirectional connection
+  that carries event-typed JSON messages, with server-side session
+  state, VAD-managed turn boundaries, and `interruption` events when
+  the user starts speaking while the model is responding. Adopted
+  by OpenAI Realtime, Google Gemini Live, ElevenLabs Conversational
+  AI.
+
+Neither pattern is a strict superset of the other. The REST shape
+makes it easy to slot omni into a normal OpenAI-shaped client (same
+SDK, same endpoint, optional fields); the WebSocket shape lowers
+end-to-end latency and natively models barge-in. Both are real
+"beyond OpenAI-compat" surfaces — they just differ on how much
+state lives in the protocol.
+
+### vLLM-Omni — REST extension on `/v1/chat/completions`
+
+Same path as plain chat. New `modalities` field. Audio in as a
+content part; audio out under `choices[0].message.audio`.
+
+```json
+{
+  "model": "Qwen/Qwen2.5-Omni-7B",
+  "modalities": ["text", "audio"],
+  "audio": {"voice": "Cherry", "format": "wav"},
+  "messages": [
+    {
+      "role": "user",
+      "content": [
+        {"type": "text", "text": "Describe this audio."},
+        {"type": "audio_url", "audio_url": {"url": "https://example.com/clip.mp3"}}
+      ]
+    }
+  ]
+}
+```
+
+vLLM-Omni's `audio_url` mirrors the OpenAI `image_url` convention
+for symmetry across modalities (`image_url`, `video_url`,
+`audio_url`, `text`). The `url` field accepts either an
+`http(s)://` URL the server fetches, or a local file path that
+the client SDK auto-encodes to a `data:` URI before sending.
+**Not** the OpenAI Audio API's `input_audio` content type with
+inline base64 — that's a different convention. (HT-compat picks
+`input_audio` instead; see below.)
+
+`modalities` ∈ `{["text"], ["audio"], ["text","audio"]}` (text-only
+skips the audio-generation stages for lower latency). Available
+voices on the reference Qwen2.5-Omni serve are `Cherry`, `Ethan`,
+`Serena`, `Chelsie`. Input audio formats supported: `mp3`, `wav`,
+`ogg`, `flac`, `m4a`.
+
+Response carries both text and audio when `modalities` includes
+both:
+
+```json
+{
+  "choices": [{
+    "index": 0,
+    "message": {
+      "role": "assistant",
+      "content": "The audio is a piano arpeggio.",
+      "audio": {
+        "id": "audio-...",
+        "data": "<base64 wav>",
+        "format": "wav"
+      }
+    }
+  }]
+}
+```
+
+Streaming: standard SSE, with `delta.audio.data` (base64 chunks)
+interleaved with `delta.content` (text). The reference
+implementation doesn't guarantee codec-aligned audio chunk
+boundaries — clients concatenate `data` across chunks before
+decoding.
+
+**Caveat:** standard upstream vLLM only supports the thinker
+(text-out only) for Qwen-Omni models. Audio output requires
+**vLLM-Omni** (the separate fork project under `vllm-omni`) or
+vLLM ≥ source-built from late-April 2025.
+
+### OpenAI Realtime — WebSocket session
+
+Connect:
+
+```
+wss://api.openai.com/v1/realtime?model=gpt-realtime-2
+Authorization: Bearer $OPENAI_API_KEY
+```
+
+The session is event-typed JSON in both directions. Key events:
+
+| Direction | Event type | Purpose |
+|---|---|---|
+| client → server | `session.update` | configure model/instructions/voice/tools/VAD; server echoes back `session.updated` |
+| client → server | `input_audio_buffer.append` | append base64-encoded PCM16 audio (24 kHz) to the input buffer; up to 15 MiB per event |
+| client → server | `input_audio_buffer.commit` | finalize the input buffer (skipped under server VAD) |
+| client → server | `response.create` | request a response; alternative to letting VAD trigger |
+| server → client | `response.audio.delta` | streaming audio output (base64 PCM16 24 kHz) |
+| server → client | `response.audio_transcript.delta` | text transcript of the model's speech |
+| server → client | `response.done` | turn complete |
+
+Session state lives server-side for the duration of the connection.
+If the WebSocket drops, the session is lost — there is no resume
+protocol. Clients implement their own reconnect + replay-last-turn.
+
+Example `input_audio_buffer.append`:
+
+```json
+{
+  "event_id": "event_456",
+  "type": "input_audio_buffer.append",
+  "audio": "<base64 PCM16 24 kHz>"
+}
+```
+
+OpenAI recommends WebRTC (not raw WebSocket) for browser and mobile
+clients; the WebSocket path is positioned as server-to-server.
+
+### Google Gemini Live — WebSocket session
+
+Connect:
+
+```
+wss://generativelanguage.googleapis.com/ws/google.ai.generativelanguage.v1beta.GenerativeService.BidiGenerateContent?key=$KEY
+```
+
+Setup-then-stream pattern. The client opens the connection, sends a
+`setup` message, waits for `setupComplete` from the server, then
+streams audio.
+
+```json
+{
+  "setup": {
+    "model": "models/gemini-3.1-flash-live-preview",
+    "generation_config": {
+      "response_modalities": ["AUDIO"],
+      "speech_config": {
+        "voice_config": {"prebuilt_voice_config": {"voice_name": "Kore"}}
+      }
+    },
+    "system_instruction": {"parts": [{"text": "You are a helpful assistant."}]}
+  }
+}
+```
+
+Audio in: `realtimeInput.audio` with `mimeType: "audio/pcm;rate=16000"`
+(PCM16, 16 kHz):
+
+```json
+{
+  "realtimeInput": {
+    "audio": {"data": "<base64>", "mimeType": "audio/pcm;rate=16000"}
+  }
+}
+```
+
+Audio out: `serverContent.modelTurn.parts[].inlineData.data` (PCM16
+at 24 kHz — note the sample-rate asymmetry vs OpenAI Realtime's
+symmetric 24 kHz in/out).
+
+Distinct from OpenAI: separate `realtimeInput` (high-frequency
+streaming) and `clientContent` (discrete turns with `turnComplete`)
+message types. `realtimeInput` doesn't guarantee ordering across
+modality streams — audio, video, and text can interleave however
+the client wants.
+
+### ElevenLabs Conversational AI — WebSocket (agent-flavored)
+
+Connect:
+
+```
+wss://api.elevenlabs.io/v1/convai/conversation?agent_id={agent_id}
+```
+
+Higher-level than the OpenAI/Gemini WebSocket APIs — wraps the
+session in agent metaphor (system prompt, voice, tools live on the
+agent, configured via dashboard or passed as
+`conversation_config_override`). Event types focus on conversation
+lifecycle rather than buffer manipulation:
+
+| Direction | Event type | Purpose |
+|---|---|---|
+| client → server | `conversation_initiation_client_data` | start session with optional config overrides + dynamic variables |
+| client → server | `user_audio_chunk` | base64 PCM audio |
+| client → server | `multimodal_message` | text + file reference (added 2026) |
+| server → client | `conversation_initiation_metadata` | session ID, audio formats |
+| server → client | `user_transcript` | live ASR of user speech |
+| server → client | `agent_response_complete` | turn fully delivered including any tool-call chains (added 2026) |
+| server → client | `interruption` | user started talking; client should stop playback immediately |
+| server → client | `guardrail_triggered` | safety policy fired (added 2026) |
+
+Protocol is published as an AsyncAPI 2.6 specification — typed
+SDKs (TypeScript, Python, React) are generated from it.
+
+### HT-compat — `POST /v1/chat/completions[omni]`
+
+Same REST path as plain chat (NOT a new endpoint). HT-compat picks
+the REST-extension side of the architectural fork. Rationale: any
+HTTP client that already speaks OpenAI chat works without WS
+infrastructure; load balancers and proxies don't need WS support;
+retries are normal HTTP retries; observability is HTTP observability.
+
+Request and response shape match vLLM-Omni's top-level fields
+(`modalities`, `audio: {voice, format}`, `choices[0].message.audio`)
+but diverge on the audio-input content-part type:
+
+```json
+{
+  "model": "qwen2.5-omni-7b",
+  "modalities": ["text", "audio"],
+  "messages": [{
+    "role": "user",
+    "content": [
+      {"type": "text", "text": "Describe this audio."},
+      {"type": "input_audio", "input_audio": {"data": "<base64>", "format": "wav"}}
+    ]
+  }],
+  "audio": {"voice": "alloy", "format": "wav"}
+}
+```
+
+Differences from vLLM-Omni — three intentional, one historical:
+
+| Difference | Why |
+|---|---|
+| `input_audio` content part with inline base64 (vs vLLM-Omni's `audio_url` with URL or auto-base64'd file path) | HT-compat mirrors OpenAI Audio's `input_audio` convention rather than extending `image_url`'s symmetry. Clients targeting both OpenAI and HT-compat reuse the same content-part shape; servers that want vLLM-Omni compatibility ship an additional translator path. (The choice predates this survey; v1.2 may add `audio_url` acceptance as an alias.) |
+| `input_audio.format` MUST accept `wav`/`mp3`/`flac`/`ogg`/`m4a` | Pinned set across HT-compat servers — no surprises about container support. |
+| Unsupported `modalities` value → **501** (not 400) | "Capability gap" vs "bad input"; matches the rest of HT-compat's 501-with-envelope convention. |
+| Response `audio.expires_at` is a Unix timestamp | Machine-readable retention contract; same as `/v1/3d/generations`'s `expires_at`. |
+
+Streaming follows OpenAI SSE with one extension: `delta.audio.data`
+(base64 chunks) interleaved with `delta.content`. Codec-aligned
+chunk boundaries are **implementation-defined in v1.0** — clients
+concatenate before decoding. Pinning aligned framing is a v1.2 item.
+
+Multi-turn audio reuse (`previous_item_id` / `audio.id` echo back)
+is **not** in v1.0 — every turn re-`base64`s the bytes. Reserved
+for v1.2 once the convention stabilizes (OpenAI Realtime, Gemini
+Live, and ElevenLabs all expose this differently today).
+
+### When to pick which
+
+| Constraint | REST extension | WebSocket session |
+|---|---|---|
+| End-to-end latency under 500 ms | ✗ — request/response round-trip dominates | ✓ — server-side VAD + streaming |
+| Barge-in / interruptions | ✗ — model-side is stateless | ✓ — first-class `interruption` event |
+| Existing OpenAI SDK works | ✓ — extra fields in a normal POST | ✗ — different transport entirely |
+| Server infrastructure (LB, proxies, WAF) | ✓ — normal HTTP | ✗ — WS-aware everything |
+| Retries / debugging | ✓ — replay any request | ✗ — session state is connection-scoped |
+| Server-side session continuity | ✗ — client carries context | ✓ — built in |
+
+HT-compat-1.0 commits to the REST extension because every OpenAI-
+compat server can implement it as a small additive change to their
+existing chat endpoint. A future HT-compat WebSocket profile for
+session-scoped voice is plausible (the
+[v1.0 spec](spec/ht-compat.md#v1chatcompletionsomni-omni-modal-chat)
+notes it as out of scope; `/v1/realtime` is OpenAI's path and
+HT-compat tracks it as `ext` rather than adopting an opinionated
+shape over it).
+
+---
+
 ## Other "beyond OpenAI-compat" surface
 
 Where convergence is weak or absent, [HT-compat](spec/ht-compat.md)
@@ -837,7 +1112,6 @@ implement it.
 
 | Task | Closest reference | HT-compat | Notes |
 |---|---|---|---|
-| Omni-modal chat (audio in/out) | vLLM-Omni serving Qwen2.5-Omni | `/v1/chat/completions[omni]` — same path, `modalities: ["text","audio"]` + `input_audio` content parts | Convergence: weak (one reference impl). OpenAI Realtime takes a WebSocket route instead — same task, fundamentally different transport. |
 | Image segmentation (promptable) | Meta SAM3 (Python reference) | `/v1/segmentations` — multipart with `image` + `prompts` JSON | Convergence: none; HT-compat is the first HTTP shape. Replicate and fal.ai host SAM2 via their generic prediction wrappers, but neither pins a SAM-specific signature. |
 | Audio extraction (promptable) | Meta SAM-Audio (Python reference) | `/v1/audio/segmentations` | Convergence: none. |
 | Layered image generation | Qwen-Image-Layered | `/v1/images/decompositions` | Convergence: none. fal.ai and Replicate host this through their generic shape — no layer-specific signature pinned anywhere. |
@@ -901,6 +1175,16 @@ deferred to a future HT-compat release — see the
   servers expose preview-only as a model variant (e.g.
   `trellis-preview` vs `trellis-image-large`) rather than as a
   workflow stage in the wire shape.
+- **Real-time voice forked the transport.** Every other extension
+  in this survey stayed on HTTP request/response. Real-time voice
+  split: REST-extension (vLLM-Omni, HT-compat) on one side,
+  WebSocket session (OpenAI Realtime, Gemini Live, ElevenLabs) on
+  the other. The constraint is latency — barge-in needs round-trip
+  budget tighter than a normal HTTP request can deliver. Servers
+  picking the REST side optimize for SDK reuse and infrastructure
+  compatibility; servers picking the WebSocket side optimize for
+  latency and server-managed session state. Neither is strictly
+  better; they pay different prices.
 
 ---
 
@@ -938,6 +1222,17 @@ deferred to a future HT-compat release — see the
 - fal.ai TRELLIS: <https://fal.ai/models/fal-ai/trellis/api>
 - Tripo3D OpenAPI: <https://apidog.com/blog/how-to-use-tripo-3d-api/>
 - CSM API: <https://docs.csm.ai/>
+
+**Omni-modal chat:**
+
+- OpenAI Realtime API events:
+  <https://platform.openai.com/docs/api-reference/realtime-client-events>
+- Google Gemini Live API:
+  <https://ai.google.dev/api/live>
+- ElevenLabs Conversational AI WebSocket:
+  <https://elevenlabs.io/docs/eleven-agents/api-reference/eleven-agents/websocket>
+- vLLM-Omni online serving examples:
+  <https://docs.vllm.ai/projects/vllm-omni/en/latest/user_guide/examples/online_serving/qwen2_5_omni/>
 
 **HT-compat spec:** [spec/ht-compat.md](spec/ht-compat.md).
 
