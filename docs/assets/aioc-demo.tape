@@ -1,11 +1,12 @@
-# aioc demo — probe a real llama.cpp build and read the report.
+# aioc demo — probe a real OpenAI-compatible server and render the report.
 #
 # Render with:
 #   vhs docs/assets/aioc-demo.tape
 #
-# Assumes an OpenAI-compatible server reachable at http://127.0.0.1:8080.
-# Generated against the ht-llama.cpp fork on lithium (HT-compat 1.0;
-# /v1/reranking + /v1/chat/completions[omni] wired up).
+# Demo target is api.openai.com (unauth Phase A only — every endpoint
+# returns 401 on an empty body, which the prober grades PASS because
+# the route exists). Picks a public-reachable target so re-renders
+# don't depend on a local server.
 
 Output docs/assets/aioc-demo.gif
 
@@ -39,14 +40,14 @@ Type "clear"
 Enter
 Sleep 200ms
 
-Type "# probe llama.cpp + HT-compat extensions"
+Type "# probe api.openai.com — unauth, Phase A only"
 Enter
-Type "aioc probe http://127.0.0.1:8080 --profile ht --skip-phase-b --name ht-llama.cpp --report report.json"
+Type "aioc probe https://api.openai.com --skip-phase-b --name openai --report report.json"
 Enter
-Sleep 2500ms
+Sleep 5000ms
 
-Type "# render the report"
+Type "# render the report — 30-row catalog, colored status"
 Enter
-Type "aioc render report.json"
+Type "aioc render report.json --limit 12"
 Enter
 Sleep 5000ms
