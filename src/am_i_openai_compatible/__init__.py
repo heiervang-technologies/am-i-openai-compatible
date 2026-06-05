@@ -10,6 +10,9 @@ Public API:
 
 from __future__ import annotations
 
+from importlib.metadata import PackageNotFoundError
+from importlib.metadata import version as _pkg_version
+
 from .endpoints import ENDPOINTS, Endpoint
 from .schemas import (
     ChatCompletionChunk,
@@ -25,7 +28,14 @@ from .schemas import (
     VideoJob,
 )
 
-__version__ = "0.3.0"
+try:
+    __version__ = _pkg_version("am-i-openai-compatible")
+except PackageNotFoundError:
+    # Editable / source-tree import without `pip install -e .` (rare —
+    # mostly CI build steps that run tests from a checkout). Surface the
+    # placeholder so `aioc --version` doesn't crash; the test-suite
+    # asserts the installed flow returns the real number.
+    __version__ = "0.0.0+unknown"
 __all__ = [
     "ENDPOINTS",
     "Endpoint",
