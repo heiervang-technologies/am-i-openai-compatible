@@ -528,6 +528,28 @@ def test_batches_phase_b_intentionally_skipped():
 
 
 @respx.mock
+def test_phase_b_audio_speech_fails_on_empty_body():
+    """200 OK with audio/* Content-Type but zero bytes — binary
+    version of the empty-content bug class. A real failure mode on
+    misconfigured TTS shims (the synthesis stage crashes silently
+    after the HTTP envelope is sent)."""
+    respx.get(f"{BASE}/v1/models").mock(
+        return_value=httpx.Response(200, json={"data": [{"id": "tts-kokoro-v1"}]})
+    )
+    respx.post(f"{BASE}/v1/audio/speech").mock(
+        return_value=httpx.Response(200, headers={"content-type": "audio/wav"}, content=b"")
+    )
+
+    p = Prober(BASE, "test", endpoints_filter=r"^/v1/audio/speech$")
+    events = p.run()
+    rows = _events_by_endpoint(events, "/v1/audio/speech")
+    phase_b = next((e for e in rows if e.phase == "B"), None)
+    assert phase_b is not None, [(e.phase, e.status, e.detail) for e in rows]
+    assert phase_b.status == "FAIL", (phase_b.status, phase_b.detail)
+    assert "empty audio" in phase_b.detail
+
+
+@respx.mock
 def test_phase_b_audio_voices_passes_with_voices_array():
     """GET /v1/audio/voices is the OSS convention for voice
     enumeration (OpenAI uses a fixed enum and omits this endpoint).
