@@ -8,27 +8,62 @@ versions follow [SemVer](https://semver.org/).
 
 ### Fixed
 
-- **`_classify_kind` no longer false-positives on 3-letter substring
-  hits.** Bare `"sam" in s` matched any model id containing "sam"
-  (e.g. `samantha-1.2-mistral-7b` — a Vicuna-family LLM) and would
-  tag it as a SAM segmentation model. Bare `"ner" in s` matched
-  "owner", "tuner", "turner". Both checks now require a word-
-  boundary neighbour: SAM uses `re.search(r"\bsam\b", s)` plus
-  `sam[0-9-]` for `sam2`/`sam3`/`sam-vit-h`; NER uses an explicit
-  separator set plus `conll-*`. Real-world impact is small (the
-  bare-substring patterns matched real public ids), but the fix
-  cuts the false-positive Phase B probe budget on multi-model
-  servers. (PR #32.)
+- **`_classify_kind` no longer false-positives on short-token substring
+  hits.** A two-pass tightening. Pass 1 (PR #32) fixed bare `"sam"`
+  and `"ner"` matches (caught `samantha-1.2-mistral-7b` being tagged
+  as SAM segmentation, `owner-model` as NER). Pass 2 (PR #40)
+  generalized to a `_word(token)` helper requiring `[-_/.]` or
+  start/end boundaries on both sides, applied to tts/voice/vibe/
+  kokoro/bark/xtts, video/wan/ltx/cogvideo/sora, and a re-fix on
+  sam (pass 1's `sam[0-9-]` still matched mid-word in
+  `llamabsam-7b`). `"speech"` dropped from TTS hints — too
+  ambiguous (matched STT encoders). Real-world impact is small but
+  the fix cuts false-positive Phase B probe budget on multi-model
+  servers.
+- **Empty-content gate now covers binary responses.** The gate from
+  v0.4.0 only applied to JSON; audio/* and image/* responses graded
+  PASS even with a 0-byte body. A TTS shim whose synthesis stage
+  crashes silently after the HTTP envelope is sent would have
+  PASS'd. Both binary paths now FAIL on empty body. (PR #37.)
 
 ### Tests
 
-- **Phase B coverage** for the remaining six catalog rows that had
-  no respx mocks: `/v1/audio/speech`, `/v1/audio/transcriptions`
+- **Phase B coverage** for the remaining catalog rows that lacked
+  respx mocks: `/v1/audio/speech`, `/v1/audio/transcriptions`
   (multipart), `/v1/images/generations`, `/v1/images/edits`
   (multipart), plus regression guards asserting Phase B is
-  intentionally skipped on `/v1/files` and `/v1/batches` (admin
-  routes; existence is the meaningful test). 90 tests now passing.
-  (PR #31.)
+  intentionally skipped on `/v1/files` and `/v1/batches`. Plus
+  two new tests for `/v1/audio/voices` (object-list and
+  bare-string-list forms). 96 tests now passing. (PRs #31, #36.)
+
+### Docs
+
+- **New `/v1/audio/voices` spec section** in `docs/spec/audio.md`.
+  The catalog row existed but wasn't documented; the response
+  shape (`{voices: [{id, name?, language?, ...}]}`) is now pinned
+  with notes on the ElevenLabs-vs-OpenAI divergence and the
+  bare-string-list compatibility form. (PR #36.)
+- **SECURITY.md** added — standard MIT-OSS shape, GitHub Private
+  Vulnerability Reporting preferred, 7-day acknowledgement target,
+  in-scope/out-of-scope explicitly named. (PR #41.)
+- **Spec doc audit** — bumped 7 "future v1.1" / "reserved for v1.1"
+  references to v1.2 throughout `docs/spec/ht-compat.md` +
+  `extensions.md`. v1.1 shipped in v0.4.0, so those forward-looking
+  notes meant the next minor (v1.2), not the one that just landed.
+  (PR #42.)
+- **Post-v0.4.0 README + CHANGELOG cleanups** — bumped catalog
+  count caption to 30, refreshed install-pin examples to `@v0.4.0`,
+  backfilled missing Unreleased entries. (PRs #33, #38, this PR.)
+- **Demo GIF refreshed** against `api.openai.com` (public-reproducible)
+  using the v0.4.0 `aioc render` subcommand. Drops the depriv-stale
+  reference to a private fork. (PR #43.)
+
+### CI / housekeeping
+
+- **Dependabot config** for the github-actions ecosystem. Monthly
+  cadence, grouped PRs, low review noise. Should catch the next
+  Node-major cutover with a routine PR instead of a deadline
+  scramble. (PR #35.)
 
 ## [0.4.0] — 2026-06-05
 
