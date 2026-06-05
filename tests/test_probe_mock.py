@@ -528,6 +528,56 @@ def test_batches_phase_b_intentionally_skipped():
 
 
 @respx.mock
+def test_phase_b_audio_voices_passes_with_voices_array():
+    """GET /v1/audio/voices is the OSS convention for voice
+    enumeration (OpenAI uses a fixed enum and omits this endpoint).
+    Phase B asserts the `voices` key exists; the shape is permissive
+    (object list or bare-string list both accepted)."""
+    respx.get(f"{BASE}/v1/models").mock(
+        return_value=httpx.Response(200, json={"data": [{"id": "kokoro-v1"}]})
+    )
+    respx.get(f"{BASE}/v1/audio/voices").mock(
+        return_value=httpx.Response(
+            200,
+            json={
+                "voices": [
+                    {"id": "alloy", "name": "Alloy", "language": "en"},
+                    {"id": "stevejobs-clone-1", "name": "Steve Jobs (clone)"},
+                ]
+            },
+        )
+    )
+
+    p = Prober(BASE, "test", endpoints_filter=r"^/v1/audio/voices$")
+    events = p.run()
+    rows = _events_by_endpoint(events, "/v1/audio/voices")
+    assert any(e.phase == "B" and e.status == "PASS" for e in rows), [
+        (e.phase, e.status, e.detail) for e in rows
+    ]
+
+
+@respx.mock
+def test_phase_b_audio_voices_accepts_bare_string_list():
+    """Minimal servers may return `{voices: ["alloy", "echo"]}` rather
+    than the object-list form. Phase B's key-existence check should
+    PASS either way — the catalog deliberately doesn't pin the
+    inner item shape."""
+    respx.get(f"{BASE}/v1/models").mock(
+        return_value=httpx.Response(200, json={"data": [{"id": "kokoro-v1"}]})
+    )
+    respx.get(f"{BASE}/v1/audio/voices").mock(
+        return_value=httpx.Response(200, json={"voices": ["alloy", "stevejobs-clone-1"]})
+    )
+
+    p = Prober(BASE, "test", endpoints_filter=r"^/v1/audio/voices$")
+    events = p.run()
+    rows = _events_by_endpoint(events, "/v1/audio/voices")
+    assert any(e.phase == "B" and e.status == "PASS" for e in rows), [
+        (e.phase, e.status, e.detail) for e in rows
+    ]
+
+
+@respx.mock
 def test_phase_b_audio_speech_passes_with_audio_bytes():
     """TTS — expects=audio sentinel. The probe checks the response is
     binary audio (any non-empty bytes content with audio/* content-type).

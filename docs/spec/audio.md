@@ -38,6 +38,49 @@ Server takes text, returns audio bytes.
   treats this as a SKIP for now (no separate stream row); we may add
   one when streaming TTS becomes common.
 
+## `/v1/audio/voices` *(extension — OSS convention)*
+
+OpenAI ships a fixed voice enum (`alloy`, `echo`, `fable`, `onyx`,
+`nova`, `shimmer`) and doesn't expose enumeration. Most OSS TTS
+servers ship arbitrary voice files (reference-audio-clone TTS,
+Kokoro, VibeVoice, etc.) and need a way for clients to discover
+what's available. `/v1/audio/voices` is the de-facto convention.
+
+**Request:** `GET /v1/audio/voices` (no body, no auth-specific params).
+
+**Response:**
+
+```json
+{
+  "voices": [
+    {"id": "alloy", "name": "Alloy", "language": "en", "sample_rate": 24000},
+    {"id": "stevejobs-clone-1", "name": "Steve Jobs (clone)", "language": "en"}
+  ]
+}
+```
+
+| Field | Type | Required | Notes |
+|---|---|---|---|
+| `voices[].id` | string | yes | the string to pass as `audio.voice` on `/v1/audio/speech` or in `[omni]` chat |
+| `voices[].name` | string | no | human-readable display name |
+| `voices[].language` | string | no | BCP-47 tag (e.g. `"en"`, `"en-US"`) |
+| `voices[].sample_rate` | integer | no | native sample rate of the voice model |
+| `voices[].gender` | string | no | implementation-defined enum |
+
+A bare-list shape (`{"voices": ["alloy", "stevejobs-clone-1"]}`) is
+also seen on minimal servers; clients SHOULD handle either form.
+The catalog Phase B check requires only that the `voices` key
+exists and is non-empty.
+
+### Common deviations
+
+* **Servers without TTS return 404.** The catalog grades this as
+  WARN under the `ext` kind (capability-gated, not non-compliance).
+* **Per-voice metadata varies wildly.** ElevenLabs returns
+  `{voice_id, name, samples, category, ...}` (no `id` field — uses
+  `voice_id`); most OSS shims pick a flat `{id, name, ...}`.
+  HT-compat picks `id` to match `/v1/models[i].id`.
+
 ## `/v1/audio/transcriptions` (STT)
 
 Multipart upload of an audio file, returns transcribed text.
