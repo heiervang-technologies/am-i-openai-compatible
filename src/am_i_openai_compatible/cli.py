@@ -50,11 +50,15 @@ def _cmd_spec(args: argparse.Namespace) -> int:
             )
         )
         return 0
-    width = max(len(e.path) for e in rows) + 2
-    print(f"{'PATH':<{width}}{'METHOD':<8}{'GROUP':<10}KIND")
-    print(f"{'-' * (width - 2):<{width}}{'-' * 6:<8}{'-' * 8:<10}{'-' * 4}")
+    # Compute column widths dynamically so long groups (`moderations`,
+    # `fine-tuning`, `audio-segment`) don't overflow into KIND.
+    pw = max(len(e.path) for e in rows) + 2
+    gw = max(max(len(e.group) for e in rows), len("GROUP")) + 2
+    mw = max(max(len(e.method) for e in rows), len("METHOD")) + 2
+    print(f"{'PATH':<{pw}}{'METHOD':<{mw}}{'GROUP':<{gw}}KIND")
+    print(f"{'-' * (pw - 2):<{pw}}{'-' * (mw - 2):<{mw}}{'-' * (gw - 2):<{gw}}{'-' * 4}")
     for e in rows:
-        print(f"{e.path:<{width}}{e.method:<8}{e.group:<10}{e.kind}")
+        print(f"{e.path:<{pw}}{e.method:<{mw}}{e.group:<{gw}}{e.kind}")
     return 0
 
 
