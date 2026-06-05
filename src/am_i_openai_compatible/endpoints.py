@@ -435,6 +435,8 @@ ENDPOINTS: list[Endpoint] = [
             "max_tokens": 4,
         },
         expects=("choices.0.message.audio.data",),
+        content_path="choices.0.message.audio.data",
+        min_content_length=1,
         requires_model_kind="omni",
         notes="HT-compat: vLLM-Omni-style multi-modal in/out via modalities field",
     ),

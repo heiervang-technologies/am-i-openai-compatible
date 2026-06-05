@@ -386,6 +386,52 @@ def test_phase_b_videos_passes_with_job_envelope():
 
 
 @respx.mock
+def test_phase_b_chat_omni_fails_on_empty_audio_data():
+    """Omni row's audio.data field now has a min_content_length gate
+    (same bug class as the chat empty-content gate from #12). A
+    server that returns the right envelope but `audio.data = ""`
+    would previously have PASS'd; now FAILs with the differentiated
+    detail.
+    """
+    respx.get(f"{BASE}/v1/models").mock(
+        return_value=httpx.Response(200, json={"data": [{"id": "qwen2.5-omni-7b"}]})
+    )
+    respx.post(f"{BASE}/v1/chat/completions").mock(
+        return_value=httpx.Response(
+            200,
+            json={
+                "id": "chatcmpl-1",
+                "object": "chat.completion",
+                "model": "qwen2.5-omni-7b",
+                "choices": [
+                    {
+                        "index": 0,
+                        "message": {
+                            "role": "assistant",
+                            "content": "the audio is silent",
+                            "audio": {
+                                "id": "audio-1",
+                                "data": "",  # empty — the bug we catch
+                                "format": "wav",
+                            },
+                        },
+                        "finish_reason": "stop",
+                    }
+                ],
+            },
+        )
+    )
+
+    p = Prober(BASE, "test", profile="ht", endpoints_filter=r"chat/completions\[omni\]")
+    events = p.run()
+    rows = _events_by_endpoint(events, "/v1/chat/completions[omni]")
+    phase_b = next((e for e in rows if e.phase == "B"), None)
+    assert phase_b is not None, [(e.phase, e.status, e.detail) for e in rows]
+    assert phase_b.status == "FAIL", (phase_b.status, phase_b.detail)
+    assert "empty content" in phase_b.detail
+
+
+@respx.mock
 def test_phase_b_3d_generations_passes_with_job_envelope():
     """Async job submission shape (mirrors /v1/videos): server returns
     {id, status} on POST; clients poll GET /v1/3d/generations/{id}
