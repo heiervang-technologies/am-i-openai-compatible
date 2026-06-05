@@ -149,6 +149,16 @@ def _classify_kind(model_id: str) -> set[str]:
     """
     s = model_id.lower()
     kinds: set[str] = set()
+
+    def _word(token: str) -> bool:
+        """Match `token` as a separator-bounded word inside the model id.
+        Treats `[a-z0-9]` as 'word' and `[-_/.]` (plus the start/end of
+        string) as 'boundary'. Avoids the false positives from bare
+        substring matching on short tokens (e.g. `tts` inside
+        `chattsbot`, `wan` inside `swan`, `sam` inside `samantha`).
+        """
+        return bool(re.search(rf"(?:^|[-_/.]){re.escape(token)}(?=$|[-_/.0-9])", s))
+
     is_rerank = any(k in s for k in ("rerank", "reranker"))
     if is_rerank:
         kinds.add("rerank")
@@ -156,7 +166,12 @@ def _classify_kind(model_id: str) -> set[str]:
         kinds.add("embed")
     if any(k in s for k in ("whisper", "asr")):
         kinds.add("asr")
-    if any(k in s for k in ("tts", "voice", "speech", "vibe", "kokoro")):
+    # TTS tokens are 3-5 chars; bare substring matches caught `chattsbot`,
+    # `voicebot`, `vibes-coder`, etc. Require word boundary. `speech`
+    # intentionally dropped — it's ambiguous (speech-recognition,
+    # speech-emotion-classifier are not TTS), and real TTS model ids
+    # use specific tokens (tts/voice/bark/kokoro/xtts) instead.
+    if any(_word(t) for t in ("tts", "voice", "vibe", "kokoro", "bark", "xtts")):
         kinds.add("tts")
     if any(k in s for k in ("flux", "sdxl", "stable-diffusion", "sd-")):
         kinds.add("image")
@@ -164,19 +179,19 @@ def _classify_kind(model_id: str) -> set[str]:
         kinds.add("image-edit")
     if "layered" in s or "decompose" in s:
         kinds.add("image-decompose")
-    if any(k in s for k in ("video", "wan", "ltx", "cogvideo", "sora")):
+    # `video`, `wan`, `ltx` are short; bare substring caught `swan-music-gen`
+    # and `arabsora-7b`. Require word boundary.
+    if any(_word(t) for t in ("video", "wan", "ltx", "cogvideo", "sora")):
         kinds.add("video")
     if any(k in s for k in ("trellis", "hunyuan3d", "instantmesh")):
         kinds.add("3d")
     if "sam-audio" in s or "audio-sam" in s:
         kinds.add("audio-segment")
-    # `sam` is a 3-letter substring — bare `"sam" in s` false-positives
-    # on common model names like "samantha-*". Require a word-boundary
-    # neighbour so we match real SAM family ids (sam3, sam2-base,
-    # facebook-sam-…) but not unrelated names.
-    if ("sam" in s and "audio" not in s) and (
-        re.search(r"\bsam\b", s) or re.search(r"sam[0-9-]", s)
-    ):
+    # `sam` is a 3-letter substring — PR #32's first fix `sam[0-9-]` still
+    # matched `llamabsam-7b` (the `-` boundary matched ANY position, not
+    # just word-start). Tighten to a true word-boundary match on both
+    # sides via `_word()`.
+    if _word("sam") and "audio" not in s:
         kinds.add("segment")
     if "omni" in s or "minicpm-o" in s:
         kinds.add("omni")

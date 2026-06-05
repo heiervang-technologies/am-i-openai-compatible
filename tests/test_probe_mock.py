@@ -88,6 +88,58 @@ def test_classify_kind_sam_requires_word_boundary():
     assert "segment" not in _classify_kind("sam-audio-v1")
 
 
+def test_classify_kind_tts_requires_word_boundary():
+    """PR #32 fixed sam/ner; this pass 2 catches the TTS-token false
+    positives. `"tts" in s` matched \"chattsbot\"; `"voice"` matched
+    \"voicebot-chat\"; `"vibe"` matched \"vibes-coder\". `_word()`
+    requires a separator (or start/end) around the token.
+    """
+    # True positives — real TTS model ids stay matched
+    assert "tts" in _classify_kind("kokoro-v1")
+    assert "tts" in _classify_kind("tts-1-hd")
+    assert "tts" in _classify_kind("parler-tts")
+    assert "tts" in _classify_kind("xtts-v2")
+    assert "tts" in _classify_kind("bark")
+    assert "tts" in _classify_kind("voice-1")
+    # False positives — common LLM ids that contain the tokens as substrings
+    assert "tts" not in _classify_kind("chattsbot-7b")
+    assert "tts" not in _classify_kind("voicebot-chat-v1")
+    assert "tts" not in _classify_kind("vibes-coder-7b")
+    # `"speech"` is intentionally dropped from TTS hints — it
+    # ambiguously matches speech-recognition / speech-emotion encoders
+    # which are NOT TTS.
+    assert "tts" not in _classify_kind("speech-emotion-classifier")
+    assert "tts" not in _classify_kind("wav2vec2-speech")
+
+
+def test_classify_kind_video_requires_word_boundary():
+    """`"wan"` is a 3-letter substring that matched `swan-music-gen`.
+    `"sora"` matched `arabsora-7b`. Tighten via `_word()`."""
+    # True positives
+    assert "video" in _classify_kind("wan-2.1")
+    assert "video" in _classify_kind("ltx-video")
+    assert "video" in _classify_kind("sora-2")
+    assert "video" in _classify_kind("cogvideo-x")
+    # False positives
+    assert "video" not in _classify_kind("swan-music-gen")
+    assert "video" not in _classify_kind("arabsora-7b")
+
+
+def test_classify_kind_sam_word_boundary_pass_2():
+    """PR #32's first fix used `sam[0-9-]` which matched mid-word
+    (`llamabsam-7b` has `sam-` as a substring with `-` boundary on
+    one side only). Pass 2 requires a separator on BOTH sides via
+    `_word()`.
+    """
+    # True positives
+    assert "segment" in _classify_kind("sam3")
+    assert "segment" in _classify_kind("sam2-base")
+    assert "segment" in _classify_kind("facebook-sam-vit-h")
+    # False positives — `sam` as a sub-token, not a real SAM family id
+    assert "segment" not in _classify_kind("llamabsam-7b")
+    assert "segment" not in _classify_kind("samantha-7b")
+
+
 def test_classify_kind_ner_requires_word_boundary():
     """`"ner" in s` would false-positive on "owner", "tuner",
     "generator". Real NER ids (bert-base-NER, dslim/bert-base-ner,
