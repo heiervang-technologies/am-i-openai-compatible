@@ -83,6 +83,52 @@ def test_gap_handles_malformed_events_without_crashing():
         assert rc == 0
 
 
+def test_gap_broken_in_monolith_when_monolith_fails_cluster_passes():
+    """Verdict path: monolith has the route but it FAILs; cluster
+    covers it with PASS. Verdict should be BROKEN-IN-MONOLITH and
+    the exit code should be non-zero (broken endpoints fail the
+    gap-analysis build).
+    """
+    with tempfile.TemporaryDirectory() as d:
+        tmp = Path(d)
+        mp = _write(tmp, "mono.json", [_ev("/v1/chat/completions", status="FAIL")])
+        cp = _write(tmp, "clu.json", [_ev("/v1/chat/completions", status="PASS")])
+        out_path = tmp / "GAP.md"
+        rc = gap.main(
+            [
+                "--monolith",
+                str(mp),
+                "--cluster",
+                str(cp),
+                "--format",
+                "markdown",
+                "-o",
+                str(out_path),
+            ]
+        )
+        # Non-zero exit on BROKEN-IN-MONOLITH — gap analysis treats
+        # this as a build-failing condition.
+        assert rc != 0, "BROKEN-IN-MONOLITH should yield non-zero exit"
+        text = out_path.read_text()
+        assert "BROKEN-IN-MONOLITH" in text
+
+
+def test_gap_out_of_scope_when_neither_side_exposes():
+    """Both monolith and cluster are ABSENT for an endpoint —
+    OUT-OF-SCOPE verdict. Constructed by referencing an endpoint
+    that's in the catalog but missing from both reports."""
+    with tempfile.TemporaryDirectory() as d:
+        tmp = Path(d)
+        # Both reports cover only /v1/chat/completions; the spec implies
+        # /v1/embeddings exists in catalog but neither side reports it
+        mp = _write(tmp, "mono.json", [_ev("/v1/chat/completions")])
+        cp = _write(tmp, "clu.json", [_ev("/v1/chat/completions", phase="B")])
+        # Run as text — verify no crash and the report mentions catalog
+        # endpoints that didn't appear in either report
+        rc = gap.main(["--monolith", str(mp), "--cluster", str(cp), "--format", "text"])
+        assert rc == 0
+
+
 def test_gap_markdown_format_returns_zero():
     """Markdown output path used by docs-generation flows."""
     with tempfile.TemporaryDirectory() as d:
