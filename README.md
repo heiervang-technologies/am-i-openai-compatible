@@ -49,7 +49,7 @@ Not on PyPI yet — install straight from this repo:
 pip install git+https://github.com/heiervang-technologies/am-i-openai-compatible.git
 
 # Pin to a tag (recommended for CI):
-pip install git+https://github.com/heiervang-technologies/am-i-openai-compatible.git@v0.4.1
+pip install git+https://github.com/heiervang-technologies/am-i-openai-compatible.git@v0.4.2
 
 # Or clone for a hackable checkout:
 git clone https://github.com/heiervang-technologies/am-i-openai-compatible.git
@@ -59,7 +59,7 @@ pip install -e .
 
 The composite GitHub Action takes the same git ref via its
 `aioc-version` input, e.g.
-`aioc-version: "git+https://github.com/heiervang-technologies/am-i-openai-compatible.git@v0.4.1"`.
+`aioc-version: "git+https://github.com/heiervang-technologies/am-i-openai-compatible.git@v0.4.2"`.
 
 Requires Python ≥ 3.10. A PyPI release isn't planned right now; if you
 need one, open an issue.
