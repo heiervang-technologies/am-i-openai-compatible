@@ -6,6 +6,23 @@ versions follow [SemVer](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.4.2] — 2026-06-06
+
+A patch release covering 9 merges since v0.4.1 (yesterday): one
+real user-facing bug fix in the `aioc spec` table renderer, a new
+catalog row, CI workflow hardening, and substantial test coverage
+expansion (+34 tests in one day).
+
+### Fixed
+
+- **`aioc spec` table no longer overflows columns.** The GROUP
+  column was hardcoded at 10 chars; groups longer than that
+  bled into KIND, producing visually-broken tokens like
+  `moderationsext`, `fine-tuningext`, `audio-segmentours`. The
+  fix computes column widths dynamically per the longest value
+  in the rendered rows (plus header-length floor). Regression
+  test in `tests/test_smoke.py`. (PR #54.)
+
 ### Added
 
 - **`/v1/fine_tuning/jobs` catalog row** — GET, ext kind. Closes a
@@ -24,6 +41,40 @@ versions follow [SemVer](https://semver.org/).
   in-progress runs on the same ref to save runner-minutes on PR
   iteration; `permissions: contents: read` at workflow level for
   least-privilege. (PR #50.)
+
+### Tests
+
+- **+34 tests over v0.4.1** (97 → 131). The expansion targets
+  previously-uncovered surfaces:
+  - **schemas.py** — 137 LOC public-API pydantic models had zero
+    dedicated tests; now 15 smoke tests covering real OpenAI-shape
+    parsing, extension-field tolerance, required-field enforcement,
+    Literal constraints, and the FastAPI-`{detail}` rejection on
+    `OpenAIErrorEnvelope`. (PR #56.)
+  - **cli.py dispatch** — `main()` → `_cmd_render`, `_cmd_spec --json`,
+    and the `--group` filter (which I initially misread as a
+    path-prefix filter; corrected in-PR after the test failed).
+    cli.py 63% → 73%. (PR #58.)
+  - **probe.py helpers** — edge cases in `_get_dotted` (list index
+    out of range, non-integer list index, scalar at intermediate
+    path) and `_server_error_message` (error-as-string, dict
+    without error/detail, empty body → `HTTP <code>`). (PR #60.)
+  - **gap.py verdict paths** — first dedicated tests for the
+    471-LOC analyzer behind `aioc gap`. 5 smoke tests covering
+    MATCHED / MONOLITH-ONLY / MISSING-IN-MONOLITH / malformed-
+    event tolerance / markdown output (PR #53), plus 2 more for
+    BROKEN-IN-MONOLITH (which caught the undocumented non-zero
+    exit) and OUT-OF-SCOPE (PR #62).
+
+### Docs / housekeeping
+
+- **CHANGELOG sweep** — `[Unreleased]` entries backfilled for the
+  9 post-v0.4.1 PRs (PR #53; this section itself).
+- **Install-pin examples bumped** from `@v0.4.0` (and `@v0.4.1` for
+  v0.4.2) in README, `docs/getting-started.md`, and `action.yml`'s
+  `aioc-version` input description. Plus added **step 9** to the
+  release checklist in `docs/contributing.md` so this drift doesn't
+  recur. (PR #64.)
 
 ## [0.4.1] — 2026-06-05
 
