@@ -207,7 +207,7 @@ def _classify_kind(model_id: str) -> set[str]:
     if (
         re.search(r"\bner\b", s)
         or "-ner-" in s
-        or "-ner" == s[-4:]
+        or s.endswith("-ner")
         or s.startswith("ner-")
         or "conll" in s
     ):
