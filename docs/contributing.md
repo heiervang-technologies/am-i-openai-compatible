@@ -93,6 +93,13 @@ reason this checklist exists. Follow it for every tag.
 8. Verify `aioc --version` reports the new number from a fresh
    install: `pip install git+https://github.com/heiervang-technologies/am-i-openai-compatible.git@vX.Y.Z`
    (in a throwaway venv).
+9. Bump the `@vX.Y.Z` install-pin examples to the new tag in
+   `README.md`, `docs/getting-started.md`, and `action.yml`'s
+   `aioc-version` input description. The pin examples are
+   user-facing docs; leaving them at the previous tag means new
+   users miss the bug fixes in the just-cut release. (For patch
+   releases, this is optional but recommended; for minor releases,
+   do it.)
 
 The `tests/test_metadata.py` invariants will catch the most common
 drift — `__version__` disagreeing with `pyproject.toml` or with
