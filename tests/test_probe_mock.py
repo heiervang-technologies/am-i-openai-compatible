@@ -47,6 +47,24 @@ def test_get_dotted_missing_returns_false():
     assert not ok
 
 
+def test_get_dotted_list_index_out_of_range():
+    """`choices.0.x` against `choices=[]` — IndexError path."""
+    ok, _ = _get_dotted({"choices": []}, "choices.0.message")
+    assert not ok
+
+
+def test_get_dotted_list_non_integer_part():
+    """`choices.foo` against a list — ValueError on int(part)."""
+    ok, _ = _get_dotted({"choices": [{"a": 1}]}, "choices.foo")
+    assert not ok
+
+
+def test_get_dotted_scalar_at_intermediate_path():
+    """The walk hits a scalar before reaching the leaf — `else: return False`."""
+    ok, _ = _get_dotted({"a": 1}, "a.b")
+    assert not ok
+
+
 def test_server_error_message_openai_envelope():
     r = httpx.Response(501, json={"error": {"message": "Start it with --embeddings", "code": 501}})
     assert _server_error_message(r) == "Start it with --embeddings"
@@ -60,6 +78,31 @@ def test_server_error_message_fastapi_detail():
 def test_server_error_message_plain_text():
     r = httpx.Response(500, text="boom")
     assert _server_error_message(r) == "boom"
+
+
+def test_server_error_message_error_as_string():
+    """Some non-canonical envelopes put a string directly at `error` —
+    rare but seen in the wild. Helper should surface it verbatim."""
+    r = httpx.Response(500, json={"error": "something went wrong"})
+    assert _server_error_message(r) == "something went wrong"
+
+
+def test_server_error_message_json_dict_without_error_or_detail():
+    """Body parses as JSON but has neither error nor detail — falls
+    back to the raw-text snippet."""
+    r = httpx.Response(500, json={"status": "fail", "code": 500})
+    out = _server_error_message(r)
+    # Should be a truncation of the JSON text or an HTTP-N fallback.
+    assert out != ""
+    # Sanity: it should NOT be one of the structured-extraction values
+    # (since neither error nor detail was present)
+    assert out != "fail"
+
+
+def test_server_error_message_empty_body_uses_http_code():
+    """No body at all — defaults to HTTP <code>."""
+    r = httpx.Response(503)
+    assert _server_error_message(r) == "HTTP 503"
 
 
 def test_classify_kind_uses_lexical_hints():
