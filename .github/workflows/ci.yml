@@ -18,7 +18,7 @@ concurrency:
 
 jobs:
   lint-and-test:
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, linux, x64]
     strategy:
       # Don't abort sibling Python versions when one fails — seeing
       # the FULL matrix verdict on every run beats a fast no-signal
