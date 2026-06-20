@@ -143,7 +143,7 @@ by `aioc probe`.
 
 | Target                   | Probed     | Profile         | PASS · WARN · FAIL · SKIP | Notable finding                                                       |
 | ------------------------ | ---------- | --------------- | ------------------------- | --------------------------------------------------------------------- |
-| OpenAI `api.openai.com`  | 2026-05-16 | openai (unauth) | 20 · 0 · 4 · 14           | `/v1/realtime` accepts unauth WS upgrade (101 then auth-walls events) |
+| OpenAI `api.openai.com`  | 2026-06-20 | openai (unauth) | 20 · 1 · 4 · 13           | `/v1/realtime` accepts unauth WS upgrade (101 then auth-walls events) |
 
 The public reference baseline lives at
 [`docs/baselines.md`](docs/baselines.md); contribute additional

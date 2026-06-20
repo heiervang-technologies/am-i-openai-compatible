@@ -22,37 +22,40 @@ shape.
 
 ## OpenAI · `https://api.openai.com`
 
-**Probed:** 2026-05-16 · `aioc 0.3.0`, default `openai` profile,
+**Probed:** 2026-06-20 · `aioc 0.4.2`, default `openai` profile,
 **unauth** (no `OPENAI_API_KEY` available).
 
 | | |
 |---|---|
 | PASS | 20 |
-| WARN | 0 |
+| WARN | 1 |
 | FAIL | 4 |
-| SKIP | 14 |
-| Duration | 11.8s |
+| SKIP | 13 |
+| Duration | 12.0s |
 
 **Headline:** **`/v1/realtime` accepts unauth WebSocket upgrades.** The
-upgrade returns `101 Switching Protocols`; OpenAI then presumably
-rejects the first event without a bearer. The probe still grades the
-upgrade as PASS — useful signal that the WS surface is wired.
+upgrade returns `101 Switching Protocols`; OpenAI then sends an
+`error` event (not `session.created`) which Phase B now grades as
+WARN — the upgrade is wired but the canonical Realtime handshake
+needs a bearer to complete. Phase A still grades the upgrade as
+PASS, so the WS surface is unambiguously present.
 
 **Other Phase A PASS coverage** spans the entire OpenAI catalog
 (`/v1/chat/completions` and its `[stream]` / `[logprobs]` variants,
 `/v1/responses`, `/v1/responses/compact`, `/v1/completions`,
-`/v1/embeddings`, `/v1/audio/*`, `/v1/images/{generations,edits}`,
-`/v1/files`, `/v1/batches`, `/v1/uploads`). All return `401 Unauthorized`
-on unauth — graded PASS because the route exists.
+`/v1/embeddings`, `/v1/audio/*` including the recently added
+`/v1/audio/voices`, `/v1/images/{generations,edits}`, `/v1/files`,
+`/v1/batches`, `/v1/fine_tuning/jobs`, `/v1/uploads`). All return
+`401 Unauthorized` on unauth — graded PASS because the route exists.
 
-**Phase B SKIPs** (14) are all "no model of kind X" — `/v1/models` is
-auth-walled so we can't sniff models to template against.
+**Phase B SKIPs** (13) are all "no model of kind X" — `/v1/models`
+is auth-walled so we can't sniff models to template against.
 
 **The four FAILs** are endpoints that don't even reach the auth check
-on an empty body and respond with a real error envelope (`/v1/models`
-GET returning 401 + body, `/v1/uploads` POST 401, etc.). These are
-*not* server bugs — they're just shapes Phase B can't validate
-without a bearer.
+on an empty body and respond with a real error envelope: `/v1/models`
+GET 401, `/v1/audio/voices` GET 401, `/v1/moderations` POST 401, and
+`/v1/uploads` POST 401. These are *not* server bugs — they're just
+shapes Phase B can't validate without a bearer.
 
 **Caveat.** Re-running with `--openai-api-key sk-...` would unlock
 full Phase B coverage (real chat completions, embeddings, the
