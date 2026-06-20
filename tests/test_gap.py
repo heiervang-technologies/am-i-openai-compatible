@@ -129,6 +129,32 @@ def test_gap_out_of_scope_when_neither_side_exposes():
         assert rc == 0
 
 
+def test_render_gum_falls_back_to_text_when_gum_missing(monkeypatch, capsys):
+    """If `gum` isn't on PATH, render_gum must degrade gracefully:
+    fall through to the text renderer and return 0 without
+    attempting any subprocess calls. Covers gap.py:304-306.
+    """
+    from am_i_openai_compatible import gap as gap_mod
+
+    monkeypatch.setattr(gap_mod.shutil, "which", lambda _: None)
+
+    # Build one minimal Row directly so we don't need a CLI roundtrip.
+    rows = [
+        gap_mod.Row(
+            endpoint="/v1/chat/completions",
+            monolith=gap_mod.Cell(status="PASS", detail="", phase="A"),
+            cluster_services=["svc"],
+            cluster_status="PASS",
+            verdict="MATCHED",
+        )
+    ]
+    rc = gap_mod.render_gum(rows, monolith_name="mono", cluster_label="cluster")
+    assert rc == 0
+    out = capsys.readouterr().out
+    # Text-renderer fallback should mention the endpoint
+    assert "/v1/chat/completions" in out
+
+
 def test_gap_markdown_format_returns_zero():
     """Markdown output path used by docs-generation flows."""
     with tempfile.TemporaryDirectory() as d:
