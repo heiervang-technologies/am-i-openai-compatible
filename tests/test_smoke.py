@@ -121,6 +121,134 @@ def test_cli_main_dispatches_spec_with_group_filter(capsys):
     assert not any("/v1/embeddings" == line.split()[0] for line in body_lines)
 
 
+def test_cli_main_dispatches_probe_subcommand(monkeypatch):
+    """End-to-end dispatch test for `aioc probe`. Covers
+    cli.py:_cmd_probe — argv translation for required + optional
+    flags. The dispatcher's conditional forwarding logic
+    (`if args.report:`, `if args.skip_phase_b:`, etc.) is the part
+    most likely to silently break, so assert on the forwarded argv
+    list directly rather than letting probe.main run.
+    """
+    from am_i_openai_compatible import probe
+    from am_i_openai_compatible.cli import main
+
+    captured: dict[str, list[str] | None] = {"argv": None}
+
+    def fake_probe_main(argv):
+        captured["argv"] = list(argv)
+        return 0
+
+    monkeypatch.setattr(probe, "main", fake_probe_main)
+
+    rc = main(
+        [
+            "probe",
+            "http://localhost:8080",
+            "--name",
+            "test",
+            "--report",
+            "/tmp/r.json",
+            "--skip-phase-b",
+            "--timeout",
+            "5",
+            "--endpoints-filter",
+            "/v1/chat",
+            "--profile",
+            "ht",
+            "--model",
+            "qwen-7b",
+            "--openai-api-key",
+            "sk-test",
+        ]
+    )
+    assert rc == 0
+    argv = captured["argv"]
+    assert argv is not None
+    # Required pair
+    assert "--base-url" in argv and argv[argv.index("--base-url") + 1] == "http://localhost:8080"
+    assert "--name" in argv and argv[argv.index("--name") + 1] == "test"
+    # Conditional forwards — every flag should make it through
+    assert "--report" in argv and argv[argv.index("--report") + 1] == "/tmp/r.json"
+    assert "--skip-phase-b" in argv
+    assert "--req-timeout" in argv and argv[argv.index("--req-timeout") + 1] == "5.0"
+    assert "--endpoints-filter" in argv and argv[argv.index("--endpoints-filter") + 1] == "/v1/chat"
+    assert "--profile" in argv and argv[argv.index("--profile") + 1] == "ht"
+    assert "--model" in argv and argv[argv.index("--model") + 1] == "qwen-7b"
+    assert "--openai-api-key" in argv and argv[argv.index("--openai-api-key") + 1] == "sk-test"
+
+
+def test_cli_main_probe_omits_unset_optional_flags(monkeypatch):
+    """The `if args.profile != "openai"` branch must drop the flag
+    when the user didn't override the default. Otherwise the
+    forwarded argv would carry stale defaults that mask real
+    misconfiguration.
+    """
+    from am_i_openai_compatible import probe
+    from am_i_openai_compatible.cli import main
+
+    captured: dict[str, list[str] | None] = {"argv": None}
+
+    def fake_probe_main(argv):
+        captured["argv"] = list(argv)
+        return 0
+
+    monkeypatch.setattr(probe, "main", fake_probe_main)
+
+    rc = main(["probe", "http://localhost:8080", "--name", "test"])
+    assert rc == 0
+    argv = captured["argv"]
+    assert argv is not None
+    # Defaults must NOT be forwarded — only --base-url + --name
+    for flag in (
+        "--report",
+        "--skip-phase-b",
+        "--req-timeout",
+        "--endpoints-filter",
+        "--profile",
+        "--model",
+        "--openai-api-key",
+    ):
+        assert flag not in argv, f"{flag} should not be forwarded when unset"
+
+
+def test_cli_main_dispatches_gap_subcommand(monkeypatch):
+    """End-to-end dispatch test for `aioc gap`. Covers
+    cli.py:_cmd_gap — argv translation including the optional
+    --output flag.
+    """
+    from am_i_openai_compatible import gap
+    from am_i_openai_compatible.cli import main
+
+    captured: dict[str, list[str] | None] = {"argv": None}
+
+    def fake_gap_main(argv):
+        captured["argv"] = list(argv)
+        return 0
+
+    monkeypatch.setattr(gap, "main", fake_gap_main)
+
+    rc = main(
+        [
+            "gap",
+            "--monolith",
+            "mono.json",
+            "--cluster",
+            "clu.json",
+            "--format",
+            "markdown",
+            "-o",
+            "GAP.md",
+        ]
+    )
+    assert rc == 0
+    argv = captured["argv"]
+    assert argv is not None
+    assert "--monolith" in argv and argv[argv.index("--monolith") + 1] == "mono.json"
+    assert "--cluster" in argv and argv[argv.index("--cluster") + 1] == "clu.json"
+    assert "--format" in argv and argv[argv.index("--format") + 1] == "markdown"
+    assert "-o" in argv and argv[argv.index("-o") + 1] == "GAP.md"
+
+
 def test_cli_spec_table_columns_dont_overflow(capsys):
     """Regression for the column-overflow bug: `aioc spec` used a
     hardcoded 10-char-wide GROUP column. Groups longer than that
