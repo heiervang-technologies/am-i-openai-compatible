@@ -17,6 +17,7 @@ Legend: ✅ pass · ⚠️ pass-with-deviation · ❌ not implemented · — out
 | `/v1/embeddings`                        | ✅     | ✅   | ✅        | ✅     | ✅        | ❌       |
 | `/v1/audio/transcriptions`              | ✅     | ✅   | ❌        | ❌     | ❌        | ❌       |
 | `/v1/audio/speech`                      | ✅     | ⚠️   | ❌        | ❌     | ❌        | ❌       |
+| `/v1/audio/voices`                      | ✅     | ❌   | ❌        | ❌     | ❌        | ❌       |
 | `/v1/images/generations`                | ✅     | ⚠️   | ❌        | ❌     | ❌        | ❌       |
 | `/v1/images/edits`                      | ✅     | ❌   | ❌        | ❌     | ❌        | ❌       |
 
@@ -30,6 +31,8 @@ Legend: ✅ pass · ⚠️ pass-with-deviation · ❌ not implemented · — out
 | `/v1/audio/translations`                | ✅     | ⚠️   | ❌        | ❌     | ❌        | ❌       |
 | `/v1/moderations`                       | ✅     | ❌   | ❌        | ❌     | ❌        | ❌       |
 | `/v1/files`                             | ✅     | ❌   | ❌        | ❌     | ❌        | ❌       |
+| `/v1/batches`                           | ✅     | ❌   | ❌        | ❌     | ❌        | ❌       |
+| `/v1/uploads`                           | ✅     | ❌   | ❌        | ❌     | ❌        | ❌       |
 | `/v1/fine_tuning/jobs`                  | ✅     | ❌   | ❌        | ❌     | ❌        | ❌       |
 
 ## Feature deviations on shared endpoints
