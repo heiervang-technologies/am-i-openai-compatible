@@ -52,3 +52,6 @@ jobs:
 
       - name: Test
         run: pytest -q
+
+      - name: Catalog-vs-docs drift check
+        run: python scripts/check_catalog_doc_drift.py
