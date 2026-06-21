@@ -6,6 +6,34 @@ versions follow [SemVer](https://semver.org/).
 
 ## [Unreleased]
 
+### Tests
+
+- **`cli.py` dispatch + `gap.render_gum` fallback coverage.** Three
+  new tests close residual coverage gaps surfaced during the Epoch
+  15 idle pass: two `_cmd_probe` tests (one asserts every flag
+  forwards, one asserts unset optional flags are NOT forwarded —
+  guards against stale-default leaks through the `if args.profile
+  != "openai":` style conditionals), one `_cmd_gap` dispatch test,
+  and one `render_gum` no-`gum`-installed fallback test that
+  monkeypatches `shutil.which` to `None` to verify the graceful
+  degradation to `render_text`. `cli.py` 73% → 99%, `gap.py` 79%
+  → 80%. (PR #73.)
+
+### Docs / housekeeping
+
+- **OpenAI baseline refreshed** against a 2026-06-20 probe (was
+  2026-05-16 / aioc 0.3.0). No catalog drift — all 21
+  openai-profile rows still route on api.openai.com. The
+  `/v1/realtime` Phase B verdict moved SKIP → WARN as a
+  consequence of the prober's stricter `session.created` check
+  (the upgrade succeeds but unauth surfaces an `error` event in
+  place of the canonical session-create frame). README baseline
+  row synced. (PR #74.)
+- **`_classify_kind` ner check** rewritten from yoda condition
+  `"-ner" == s[-4:]` to `s.endswith("-ner")` for symmetry with
+  the sibling `s.startswith("ner-")` clause. Surfaced by
+  `ruff check --select=SIM300`. No behavior change. (PR #68.)
+
 ## [0.4.2] — 2026-06-06
 
 A patch release covering 9 merges since v0.4.1 (yesterday): one
