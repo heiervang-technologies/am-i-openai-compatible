@@ -32,6 +32,19 @@ versions follow [SemVer](https://semver.org/).
 
 ### Docs / housekeeping
 
+- **Catalog-vs-doc drift closed for both reference docs.**
+  `docs/spec/canonical-surface.md` claimed to show "the full table
+  the prober walks" but was missing 5 openai-profile rows
+  (`/v1/audio/voices`, `/v1/batches`, `/v1/realtime`,
+  `/v1/responses/compact`, `/v1/uploads`, plus the
+  `[logprobs]` chat variant), still listed the retired
+  `/v1/images/variations`, and showed spec-only polling routes
+  (`/v1/videos/{id}`, `…/content`) as if they were cataloged.
+  `docs/compatibility-matrix.md` was missing
+  `/v1/audio/voices`, `/v1/batches`, and `/v1/uploads`. Both docs
+  now mirror the openai profile of `endpoints.py` exactly. RFC
+  filed at #87 for whether to auto-generate these going forward.
+  (PRs #84 + #86.)
 - **README demo caption + GIF** fixed and re-rendered. The caption
   claimed the GIF showed an HT-compat extensions probe against
   llama.cpp grading "30 endpoints"; none of that was true since
