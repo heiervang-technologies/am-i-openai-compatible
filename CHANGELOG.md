@@ -6,6 +6,18 @@ versions follow [SemVer](https://semver.org/).
 
 ## [Unreleased]
 
+### CI
+
+- **Catalog-vs-docs drift check.** Implements option 1 of RFC #87:
+  a 60-line script + pytest case that asserts every openai-profile
+  path in `endpoints.py` appears verbatim in
+  `docs/spec/canonical-surface.md` and `docs/compatibility-matrix.md`.
+  Runs on every Py version in the matrix as a step after pytest,
+  AND in-process as `test_catalog_vs_docs_no_drift` so contributors
+  catch missing rows locally. Same class of drift PRs #84 / #86
+  fixed — preventing recurrence. Tolerates doc-only narrative refs
+  (retired endpoints, spec-only polling routes). (PR #89.)
+
 ### Changed
 
 - **`Phase B skipped for admin/list routes` is now data-driven.**
