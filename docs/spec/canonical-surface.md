@@ -1,7 +1,12 @@
 # Canonical surface
 
-The full table the prober walks. Generated from
-[`endpoints.py`](https://github.com/heiervang-technologies/am-i-openai-compatible/blob/main/src/am_i_openai_compatible/endpoints.py).
+The endpoints the prober walks under the default `openai` profile,
+plus the `/v1/videos` HT-compat extension as a representative `ours`
+row. The catalog is sourced from
+[`endpoints.py`](https://github.com/heiervang-technologies/am-i-openai-compatible/blob/main/src/am_i_openai_compatible/endpoints.py);
+the full HT-compat `ours` surface (rerank, segmentation, encoder
+rows, omni chat, 3D, image decomposition, audio segmentation) lives
+in [HT-compat profile](ht-compat.md).
 
 You can produce a current copy of this table with:
 
@@ -18,12 +23,15 @@ aioc spec
 
 ## Chat & completions
 
-| Path                                | Method | Kind | Notes                                                      |
-|-------------------------------------|--------|------|------------------------------------------------------------|
-| `/v1/chat/completions`              | POST   | core | The headline endpoint; supports tools, JSON mode, streams  |
-| `/v1/chat/completions` *(stream)*   | POST   | core | Separate row so a missing-stream regression is visible     |
-| `/v1/completions`                   | POST   | ext  | Legacy text completion; many newer servers omit it         |
-| `/v1/responses`                     | POST   | ext  | Newer Responses API; few OSS servers implement             |
+| Path                                  | Method | Kind | Notes                                                      |
+|---------------------------------------|--------|------|------------------------------------------------------------|
+| `/v1/chat/completions`                | POST   | core | The headline endpoint; supports tools, JSON mode, streams  |
+| `/v1/chat/completions` *(stream)*     | POST   | core | Separate row so a missing-stream regression is visible     |
+| `/v1/chat/completions` *(logprobs)*   | POST   | ext  | Separate row so a missing-logprobs regression is visible   |
+| `/v1/completions`                     | POST   | ext  | Legacy text completion; many newer servers omit it         |
+| `/v1/responses`                       | POST   | ext  | Newer Responses API; few OSS servers implement             |
+| `/v1/responses/compact`               | POST   | ext  | Compact-output variant of the Responses API                |
+| `/v1/realtime`                        | GET    | ext  | WebSocket upgrade for low-latency conversational sessions  |
 
 ## Audio
 
@@ -32,6 +40,7 @@ aioc spec
 | `/v1/audio/speech`         | POST   | core | TTS; returns audio bytes (mp3/opus/wav)                 |
 | `/v1/audio/transcriptions` | POST   | core | STT; multipart upload, returns `text` JSON              |
 | `/v1/audio/translations`   | POST   | ext  | STT to English; many servers fold into transcriptions   |
+| `/v1/audio/voices`         | GET    | ext  | List installed TTS voice ids                            |
 
 ## Images
 
@@ -39,15 +48,21 @@ aioc spec
 |-----------------------|--------|------|-------------------------------------------------------------|
 | `/v1/images/generations` | POST | core | Returns `{data: [{url}|{b64_json}]}`                        |
 | `/v1/images/edits`    | POST   | core | OpenAI requires multipart; some OSS take JSON (WARN)        |
-| `/v1/images/variations` | POST | ext  | Less commonly implemented                                   |
+
+> `/v1/images/variations` was pruned from the catalog in v0.3.1 — see
+> the [Retired](../compatibility-matrix.md#retired) section of the
+> matrix for context.
 
 ## Videos *(`ours` extension)*
 
 | Path                  | Method | Kind | Notes                                                       |
 |-----------------------|--------|------|-------------------------------------------------------------|
 | `/v1/videos`          | POST   | ours | Async job creation; mirrors OpenAI's Sora job shape         |
-| `/v1/videos/{id}`     | GET    | ours | Job status polling                                          |
-| `/v1/videos/{id}/content` | GET | ours | Final video bytes when status is `completed`              |
+
+> The polling routes `/v1/videos/{id}` and `/v1/videos/{id}/content`
+> are part of the HT-compat protocol but aren't probed directly —
+> they need a live job id, which would couple a probe to a multi-
+> second render.
 
 ## Embeddings
 
@@ -55,12 +70,18 @@ aioc spec
 |------------------|--------|------|----------------------------------------|
 | `/v1/embeddings` | POST   | core | Returns `{data: [{embedding: [...]}]}` |
 
-## Files / fine-tuning *(typically not implemented)*
+## Files / batches / fine-tuning *(typically not implemented)*
 
-| Path                  | Method | Kind | Notes                                  |
-|-----------------------|--------|------|----------------------------------------|
-| `/v1/files`           | GET    | ext  | Uploads — most OSS servers omit        |
-| `/v1/fine_tuning/jobs`| GET    | ext  | OSS servers don't fine-tune via API    |
+| Path                  | Method | Kind | Notes                                                   |
+|-----------------------|--------|------|---------------------------------------------------------|
+| `/v1/files`           | GET    | ext  | Uploads listing; most OSS servers omit                  |
+| `/v1/batches`         | GET    | ext  | OpenAI Batch API; almost no OSS server implements       |
+| `/v1/fine_tuning/jobs`| GET    | ext  | OSS servers don't fine-tune via API                     |
+| `/v1/uploads`         | POST   | ext  | Multi-part upload-session creation (OpenAI Uploads API) |
+
+The three GET routes (`/v1/files`, `/v1/batches`, `/v1/fine_tuning/jobs`)
+carry `phase_b_skip=True` in the catalog — Phase A existence is the
+meaningful signal; Phase B against an unauth server would just 401.
 
 ## Moderation / safety
 
