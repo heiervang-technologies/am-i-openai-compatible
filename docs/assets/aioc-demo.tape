@@ -46,7 +46,7 @@ Type "aioc probe https://api.openai.com --skip-phase-b --name openai --report re
 Enter
 Sleep 5000ms
 
-Type "# render the report — 30-row catalog, colored status"
+Type "# render the report — colored status per endpoint"
 Enter
 Type "aioc render report.json --limit 12"
 Enter

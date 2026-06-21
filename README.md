@@ -8,11 +8,11 @@
 
 ![aioc demo](docs/assets/aioc-demo.gif)
 
-> *aioc probe against a custom llama.cpp build with HT-compat
-> extensions: 30 endpoints graded in 0.2s — including
-> `/v1/reranking`, `/v1/chat/completions[omni]`, and the v1.1
-> encoder rows (`/v1/qa`, `/v1/ner`, `/v1/classifications`).
-> Source: [`docs/assets/aioc-demo.tape`](docs/assets/aioc-demo.tape).*
+> *`aioc probe` against `api.openai.com` (unauth, Phase A only):
+> every cataloged endpoint returns `401`, which the prober grades
+> `PASS` because the route exists. `aioc render` then prints the
+> coloured per-endpoint table from the JSON report. Source:
+> [`docs/assets/aioc-demo.tape`](docs/assets/aioc-demo.tape).*
 
 The term "OpenAI-compatible" gets used so loosely it's nearly worthless.
 Every implementation — llama.cpp, vLLM, Ollama, LM Studio, TabbyAPI,
