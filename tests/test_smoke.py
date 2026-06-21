@@ -31,6 +31,20 @@ def test_catalog_kinds_are_known():
         assert e.kind in valid, f"{e.path} has unknown kind {e.kind!r}"
 
 
+def test_catalog_phase_b_skip_covers_admin_list_routes():
+    """`phase_b_skip=True` is the data-driven replacement for the
+    old hardcoded admin-route tuple in probe.py. The three known
+    admin/list routes (`/v1/files`, `/v1/batches`,
+    `/v1/fine_tuning/jobs`) must remain flagged — otherwise the
+    probe would issue a Phase B GET that 401-FAILs against unauth
+    servers and adds noise to baseline reports.
+    """
+    flagged = {e.path for e in aioc.ENDPOINTS if e.phase_b_skip}
+    assert flagged == {"/v1/files", "/v1/batches", "/v1/fine_tuning/jobs"}, (
+        f"phase_b_skip drift: {flagged}"
+    )
+
+
 def test_cli_help_does_not_crash():
     parser = build_parser()
     # argparse exits with SystemExit(0) on -h; we just verify parser builds.
