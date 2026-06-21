@@ -6,6 +6,17 @@ versions follow [SemVer](https://semver.org/).
 
 ## [Unreleased]
 
+### Changed
+
+- **`Phase B skipped for admin/list routes` is now data-driven.**
+  Added `phase_b_skip: bool = False` to the `Endpoint` dataclass;
+  the three admin-list rows (`/v1/files`, `/v1/batches`,
+  `/v1/fine_tuning/jobs`) carry `phase_b_skip=True`. The hardcoded
+  path tuple in `probe.py:798` is gone — adding a fourth admin
+  endpoint stays a single-file change (the README "you update one
+  file" guarantee). No behavior change against the current catalog.
+  (PR #79, closes #78.)
+
 ### Tests
 
 - **`cli.py` dispatch + `gap.render_gum` fallback coverage.** Three
