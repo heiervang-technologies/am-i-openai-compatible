@@ -795,8 +795,9 @@ class Prober:
             # phase B only if A says the route exists
             if a_status != "PASS":
                 continue
-            if ep.path in ("/v1/files", "/v1/batches", "/v1/fine_tuning/jobs"):
-                # admin/list routes — existence is the meaningful test.
+            if ep.phase_b_skip:
+                # Admin/list routes — Phase A existence is the meaningful
+                # test; Phase B against unauth would just 401 FAIL.
                 # /v1/uploads was historically here but graduated to POST
                 # with a real create body in v0.3.1, so it now runs Phase B.
                 continue

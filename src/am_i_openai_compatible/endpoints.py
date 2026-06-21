@@ -70,6 +70,12 @@ class Endpoint:
     # endpoints we don't gate).
     content_path: str = ""
     min_content_length: int = 0
+    # Admin/list routes where Phase A existence is the meaningful test
+    # and Phase B against an unauth server would just produce a noisy
+    # 401 FAIL. Keep the decision data-driven here rather than
+    # hardcoded in probe.py so adding another admin row stays a
+    # single-file change (the README guarantee).
+    phase_b_skip: bool = False
 
 
 # ---------------------------------------------------------------------------
@@ -315,6 +321,7 @@ ENDPOINTS: list[Endpoint] = [
         kind="ext",
         expects=("data",),
         notes="OpenAI Files API; usually absent in OSS shims",
+        phase_b_skip=True,
     ),
     Endpoint(
         path="/v1/batches",
@@ -323,6 +330,7 @@ ENDPOINTS: list[Endpoint] = [
         kind="ext",
         expects=("data",),
         notes="OpenAI Batch API; usually absent in OSS shims",
+        phase_b_skip=True,
     ),
     Endpoint(
         path="/v1/fine_tuning/jobs",
@@ -331,6 +339,7 @@ ENDPOINTS: list[Endpoint] = [
         kind="ext",
         expects=("data",),
         notes="OpenAI fine-tuning jobs list; OSS servers don't fine-tune via API",
+        phase_b_skip=True,
     ),
     Endpoint(
         path="/v1/uploads",
