@@ -31,6 +31,26 @@ def test_catalog_kinds_are_known():
         assert e.kind in valid, f"{e.path} has unknown kind {e.kind!r}"
 
 
+def test_catalog_vs_docs_no_drift():
+    """The reference docs (canonical-surface.md, compatibility-matrix.md)
+    are hand-curated mirrors of the openai-profile catalog. Closes the
+    drift-class-of-bug the way PRs #84 / #86 fixed it, then RFC #87
+    proposed preventing — running the standalone check in-process so
+    contributors catch missing-row PRs before they hit CI.
+    """
+    import importlib.util
+    from pathlib import Path
+
+    script = Path(__file__).parent.parent / "scripts/check_catalog_doc_drift.py"
+    spec = importlib.util.spec_from_file_location("_drift_check", script)
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    assert mod.main() == 0, (
+        "catalog/doc drift detected — see stderr above and add the missing row(s) "
+        "to docs/spec/canonical-surface.md and docs/compatibility-matrix.md."
+    )
+
+
 def test_catalog_phase_b_skip_covers_admin_list_routes():
     """`phase_b_skip=True` is the data-driven replacement for the
     old hardcoded admin-route tuple in probe.py. The three known
