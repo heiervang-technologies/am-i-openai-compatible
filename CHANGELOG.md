@@ -32,6 +32,17 @@ versions follow [SemVer](https://semver.org/).
 
 ### Docs / housekeeping
 
+- **README demo caption + GIF** fixed and re-rendered. The caption
+  claimed the GIF showed an HT-compat extensions probe against
+  llama.cpp grading "30 endpoints"; none of that was true since
+  the tape was rewritten in #43 — it actually probes
+  api.openai.com unauth (openai profile, 21 rows). Caption now
+  matches the demo; the "30-row catalog" comment baked into the
+  tape (off-by-one after `/v1/fine_tuning/jobs` landed in #51) was
+  dropped to keep the demo stable across future catalog growth.
+  GIF re-rendered against `aioc 0.4.2` — summary now reads
+  "probe 'openai': 39 events in 7.7s · PASS=21 SKIP=18".
+  (PR #81.)
 - **OpenAI baseline refreshed** against a 2026-06-20 probe (was
   2026-05-16 / aioc 0.3.0). No catalog drift — all 21
   openai-profile rows still route on api.openai.com. The
