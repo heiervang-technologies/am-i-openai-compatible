@@ -48,6 +48,14 @@ For endpoints all servers implement, what's actually different:
 | OpenAI error envelope on 4xx                      | ✅     | ✅   | ⚠️        | ⚠️     | ⚠️        | ⚠️       |
 | `cache_prompt` / KV-cache reuse                   | n/a    | ✅   | ✅        | ⚠️     | ✅        | ✅       |
 | Logprobs on chat completions                      | ✅     | ✅   | ✅        | ⚠️     | ⚠️        | ⚠️       |
+| Repetition penalty (`repetition_penalty`/`repeat_penalty`) | ❌ | ✅ | ⚠️ | ⚠️ | ⚠️ | ✅ |
+
+The repetition-penalty row is a **field-name split**, not just a support
+gap: vLLM, SGLang, and TabbyAPI take `repetition_penalty`; llama.cpp —
+and the llama.cpp-backed LM Studio and Ollama — take `repeat_penalty`.
+OpenAI has neither and uses `frequency_penalty`/`presence_penalty`.
+Unknown keys are dropped silently, so a mismatched field name is a no-op,
+not a 4xx. Details: [Chat & completions → Sampling parameters](spec/chat.md#sampling-parameters).
 
 ## Retired
 

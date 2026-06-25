@@ -30,6 +30,10 @@ matured rapidly through 2025.
   llama.cpp.
 * **`mirostat`, `mirostat_tau`, `mirostat_eta`** — alternative
   sampler. Spec-silent; harmless extras.
+* **`repeat_penalty` / `repeat_last_n`** — repetition penalty and its
+  lookback window. Note the spelling: a client that sends the vLLM-style
+  `repetition_penalty` is *silently ignored* here (unknown field, no
+  error). See [Sampling parameters](../spec/chat.md#repetition-penalty).
 * **Multi-modal**: when started with `--mmproj`, `llama-server`
   accepts `image_url` content parts in chat messages. The mmproj is
   loaded once at server start; you can't switch projectors per
