@@ -32,6 +32,10 @@ first OSS server to mirror it.
   json_schema`; both are supported.
 * **`echo`** in `/v1/completions` — include the prompt in the output.
   OpenAI dropped this; vLLM kept it.
+* **`repetition_penalty`** — multiplicative anti-repetition penalty
+  (`1.0` = off). OpenAI has no equivalent; llama.cpp spells the same
+  knob `repeat_penalty`. See
+  [Sampling parameters](../spec/chat.md#repetition-penalty).
 
 ## Common deviations the catalog flags
 

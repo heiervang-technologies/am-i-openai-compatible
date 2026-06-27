@@ -104,6 +104,42 @@ forget the `[DONE]` sentinel (a real Ollama bug for a while) get a
   `stream_options.include_usage` should ignore it without erroring.
   vLLM and llama.cpp do the right thing; some shims 400 the request.
 
+## Sampling parameters
+
+`temperature`, `top_p`, `max_tokens`, `seed`, `stop`, `frequency_penalty`,
+and `presence_penalty` are the canonical OpenAI knobs and are honored
+broadly. Beyond them, open inference servers expose **non-standard
+sampling controls** that real clients depend on — and the one that bites
+portability hardest is the **repetition penalty**.
+
+### Repetition penalty
+
+OpenAI has **no** `repetition_penalty`. Its only repetition controls are
+the additive `frequency_penalty` and `presence_penalty`. Open servers
+added a *multiplicative* repetition penalty instead, and they do **not**
+agree on the field name:
+
+| Server    | Field                | Notes                                                        |
+|-----------|----------------------|--------------------------------------------------------------|
+| vLLM      | `repetition_penalty` | float, `1.0` = off; `frequency_penalty`/`presence_penalty` also accepted |
+| SGLang    | `repetition_penalty` | same semantics as vLLM                                       |
+| TabbyAPI  | `repetition_penalty` | plus `repetition_range`, `repetition_decay` (ExLlama sampler) |
+| llama.cpp | `repeat_penalty`     | float, `1.0` = off; plus `repeat_last_n` lookback window     |
+| LM Studio | `repeat_penalty`     | llama.cpp-backed; same spelling                             |
+| Ollama    | `repeat_penalty`     | native under `options`; the `/v1` shim forwards only `frequency_penalty`/`presence_penalty` |
+
+The trap: every server above **silently drops unknown fields** rather
+than returning a 4xx. So a client that sends `repetition_penalty: 1.1`
+to llama.cpp gets *no penalty at all* (it wanted `repeat_penalty`), with
+no error to signal the miss — and vice-versa on vLLM. Portable clients
+send **both** keys. `1.0` disables it everywhere; typical anti-repetition
+values are `1.05`–`1.15`.
+
+The prober does not yet assert repetition-penalty *behavior* (that needs
+a Phase-C implication test like `seed`); the
+[compatibility matrix](../compatibility-matrix.md#feature-deviations-on-shared-endpoints)
+tracks per-server support and the field-name split.
+
 ## `/v1/completions` *(legacy text completion)*
 
 `ext` in this catalog. Many newer servers (vLLM ≥ 0.5, Ollama after

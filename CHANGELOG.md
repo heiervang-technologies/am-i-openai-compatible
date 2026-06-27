@@ -6,6 +6,20 @@ versions follow [SemVer](https://semver.org/).
 
 ## [Unreleased]
 
+### Documentation
+
+- **Repetition penalty + sampling parameters.** Documented the
+  repetition penalty across open inference servers, which split on the
+  field name — vLLM/SGLang/TabbyAPI use `repetition_penalty`, while
+  llama.cpp (and llama.cpp-backed LM Studio / Ollama) use
+  `repeat_penalty`; OpenAI has neither and relies on
+  `frequency_penalty`/`presence_penalty`. New
+  `docs/spec/chat.md` → *Sampling parameters* section, a
+  *Repetition penalty* row in the compatibility matrix's feature-
+  deviations table, and per-server notes in the llama.cpp and vLLM
+  implementation pages. Doc-only; no prober behavior change yet (a
+  Phase-C implication test like `seed` is the natural follow-up).
+
 ### CI
 
 - **Catalog-vs-docs drift check.** Implements option 1 of RFC #87:
