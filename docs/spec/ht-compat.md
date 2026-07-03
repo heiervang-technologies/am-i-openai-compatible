@@ -48,24 +48,46 @@ profile these rows are SKIPped.
 ## Versioning
 
 HT-compat uses semantic-version-style strings. The current version is
-**HT-compat-1.1**. Servers SHOULD advertise compliance with:
+**HT-compat-1.1.1**. Servers SHOULD advertise compliance with:
 
 ```
-X-HT-Compat: 1.1
+X-HT-Compat: 1.1.1
 ```
 
 on every response from an HT endpoint. Clients MAY send the same
 header on requests to declare which version they expect.
 
-**v1.1 (this revision)** adds three BERT-style endpoints for encoder
-models: `/v1/qa` (extractive question answering), `/v1/ner` (token
+**v1.1.1 (this revision)** is additive-only over v1.1. It pins:
+
+* An opt-in **evidence-form response variant** on `/v1/classifications`
+  (`response_form: "evidence"`) for Subjective Logic / Dirichlet
+  consumers that need the pre-softmax evidence mass rather than
+  argmax-plus-top-probability.
+* An optional **`evidence`** field on `/v1/qa` span answers alongside
+  the existing `score`; disambiguated `score` semantics based on
+  whether calibration provenance is advertised.
+* **Documented `relevance_score` domain** on `/v1/reranking` (raw
+  cross-encoder logit in ℝ by default; servers emitting a calibrated
+  `[0, 1]` value MUST flag it).
+* An optional top-level **`provenance`** block on all three v1.1
+  endpoints (`/v1/qa`, `/v1/ner`, `/v1/classifications`) that pins
+  `{model_version, seed, calib_version, lang, as_of}` — load-bearing
+  for reproducibility and consumer-side calibration lookup.
+
+Every v1.1.1 change is additive-optional: v1.1 clients hitting a
+v1.1.1 server continue to work unchanged, and v1.1.1 clients hitting
+a v1.1 server observe missing optional fields (the standard v1.1
+response shape).
+
+**v1.1** added three BERT-style endpoints for encoder models:
+`/v1/qa` (extractive question answering), `/v1/ner` (token
 classification / named-entity recognition), and `/v1/classifications`
 (sequence classification, supervised + zero-shot). All v1.0 endpoints
 are unchanged. A v1.0 server is automatically v1.1-compliant on the
 subset it implements; servers MAY advertise either version.
 
 A future minor revision may add endpoints (the spec lists candidates
-below) but will not remove or break v1.0/v1.1 signatures.
+below) but will not remove or break v1.0/v1.1/v1.1.1 signatures.
 
 ## Error envelope (required)
 
@@ -154,6 +176,23 @@ Content-Type: application/json
 `results` is sorted by `relevance_score` descending. `index` references
 position in the request `documents` array. `usage` is optional but
 SHOULD be included for cost-tracking.
+
+**`relevance_score` domain (v1.1.1).** The default and RECOMMENDED
+form is the **raw cross-encoder logit** in ℝ — negative values are
+allowed, higher = more relevant, no upper bound. This preserves
+downstream calibration flexibility (Subjective-Logic
+retrieval-source opinions expect the raw signal).
+
+Servers that emit a calibrated `[0, 1]` value instead MUST advertise
+it with a top-level response flag:
+
+```json
+{"relevance_score_calibrated": true, "results": [...]}
+```
+
+Clients MUST NOT apply a sigmoid to a `relevance_score` when this
+flag is `true` (double-sigmoid corrupts the calibration). Absent or
+`false` = raw logit.
 
 When the request sets `return_documents: true`, each result MUST also
 include the original document under `document.text` (Cohere v2
@@ -722,6 +761,29 @@ Content-Type: application/json
 indices, not byte offsets) and MUST satisfy
 `context[start:end] == answers[i].answer`. `score` is in `[0, 1]`.
 
+**`score` semantics (v1.1.1).** When the response carries a
+`provenance.calib_version` (see [Provenance](#provenance-v111)),
+`score` is the **calibrated span probability** under that
+calibration. Absent `provenance.calib_version`, `score` is the raw
+span-softmax score the underlying model emits — uncalibrated,
+still in `[0, 1]`. Consumers that care about downstream
+Subjective-Logic mapping MUST key on `provenance.calib_version` to
+decide whether calibration was applied.
+
+**Optional `evidence` field (v1.1.1).** Encoder pipelines with
+access to the span head's pre-softmax score MAY include an
+`evidence` field alongside `score`:
+
+```json
+{"answer": "Mount Everest", "score": 0.98, "evidence": 4.2, "start": 0, "end": 13}
+```
+
+`evidence` is a number `≥ 0`, unbounded above, and represents the
+span-head evidence mass for Subjective-Logic span-opinions.
+`evidence` is optional; servers without a compatible pipeline omit
+it. Clients that only need the calibrated probability can continue
+to read `score`.
+
 When `handle_impossible_answer: true` and the model judges the
 question unanswerable, `answers` MUST be an empty array rather
 than a fabricated low-confidence span.
@@ -842,8 +904,9 @@ Content-Type: application/json
 | `multi_label` | boolean | no | zero-shot only: if `true`, labels are scored independently (each in `[0,1]`); if `false` (default), scores form a softmax over `candidate_labels` |
 | `hypothesis_template` | string | no | zero-shot only: template used to expand each `candidate_label` into an NLI hypothesis (HF default: `"This example is {}."`) |
 | `top_k` | integer | no | return at most this many labels (default: all) |
+| `response_form` | string | no | v1.1.1: `"probability"` (default, backward-compatible `{label, score}` shape) or `"evidence"` (Dirichlet evidence-form shape — see below) |
 
-**Response**
+**Response (`response_form: "probability"`, default)**
 
 ```json
 {
@@ -861,6 +924,46 @@ Content-Type: application/json
 `classifications` is sorted by `score` descending. Scores are in
 `[0, 1]`.
 
+**Response (`response_form: "evidence"`, v1.1.1)**
+
+```json
+{
+  "id": "classify-...",
+  "model": "facebook/bart-large-mnli",
+  "classifications": [
+    {"label": "entail",     "evidence": 5.7, "base_rate": 0.333},
+    {"label": "contradict", "evidence": 0.9, "base_rate": 0.333},
+    {"label": "neutral",    "evidence": 1.2, "base_rate": 0.334}
+  ],
+  "prior_weight": 2.0,
+  "provenance": { "...": "..." },
+  "usage": {"total_tokens": 18}
+}
+```
+
+The evidence-form shape wires the Dirichlet concentrations
+directly, so Subjective-Logic consumers derive their `(b, d, u)`
+opinion natively (`u = W / (Σ evidence + W)`). Contracts:
+
+| Field | Type | Domain | Notes |
+|---|---|---|---|
+| `label` | string | — | The COMPLETE fixed class set MUST be present (all K classes, keyed by `label`). Order is insignificant — the array is not sorted by evidence. For NLI, exactly `{entail, contradict, neutral}`. A missing label is NOT equivalent to `evidence: 0`; consumers MUST reject responses with fewer than K classes. |
+| `evidence` | number | `≥ 0`, unbounded above | Dirichlet evidence `e_i`. NOT normalized. Load-bearing for consumer opinion derivation. |
+| `base_rate` | number | `[0, 1]` | Dirichlet prior `a_i`. `Σ base_rate` over returned labels MUST equal `1` (±1e-6). Default v0 base rates are uniform `1/K`; later revisions may pin gold-register frequencies, keyed by `calib_version`. |
+| `prior_weight` (top-level) | number | `> 0` | Dirichlet prior weight `W`. FROZEN in v1.1.1 at `2.0`. Any server that changes it MUST bump `provenance.calib_version` and republish base rates. |
+
+Consumers derive the opinion tuple `(b_i, d_i, u_i)`:
+
+```
+u_i = W / (Σ_j evidence_j + W)
+b_i = evidence_i / (Σ_j evidence_j + W)
+d_i = Σ_{j≠i} evidence_j / (Σ_j evidence_j + W)
+```
+
+The identity `Σ b_i + u = 1` holds; consumers SHOULD validate it as
+a sanity check. The `(b, d, u)` tuple itself is NEVER transmitted
+on the wire — it is derived at the consumer.
+
 ---
 
 **Common rules for v1.1 endpoints**
@@ -876,6 +979,48 @@ reject array-valued `input` on these three endpoints with 400 +
 conventions diverge (HF uses `inputs: [...]`, TEI uses
 `inputs: [[...]]`); pinning a HT-compat shape requires more reference
 implementations than currently exist. Likely v1.2 work.
+
+### Provenance (v1.1.1)
+
+All three v1.1 endpoints (`/v1/qa`, `/v1/ner`,
+`/v1/classifications`) MAY carry an optional top-level `provenance`
+object pinning the exact model + calibration state that produced the
+response. Load-bearing for downstream reproducibility and for
+consumers that key on `calib_version` to look up the frozen
+calibration parameters:
+
+```json
+{
+  "provenance": {
+    "model_version": "8adb042d524ecd5c26d3e3ba0e3fbcf7e2d0864c",
+    "seed": 42,
+    "calib_version": "nb-legal-2026-05",
+    "lang": "nb",
+    "as_of": "2026-06-21T18:30:00Z"
+  }
+}
+```
+
+| Field | Type | Notes |
+|---|---|---|
+| `model_version` | string | The pre-staged commit SHA (or equivalent immutable identifier) of the model weights used. NOT a display name. |
+| `seed` | integer | The seed used for any stochastic step (batch shuffling, dropout at inference, sampled calibration). `0` is a legal value; the field being present is the signal. |
+| `calib_version` | string | Keys the frozen calibration params (temperature, isotonic bins, or the `base_rate` vector for the evidence-form response). Absent = the response is uncalibrated raw model output. |
+| `lang` | string | BCP-47 language tag of the input. Use the specific subtag when applicable (e.g. `"nb"` for Norwegian Bokmål, NOT the macrolanguage `"no"`). |
+| `as_of` | string | RFC 3339 timestamp when the response was produced. Distinct from any HTTP `Date` header — this is the model-side timestamp for auditability. |
+
+`provenance` is OPTIONAL, so servers that don't advertise
+calibration state stay compliant. When present, **all five fields
+MUST be set** — consumers relying on `provenance` for opinion
+derivation cannot handle partial blocks. Servers with no
+calibration MAY still emit `provenance` with `calib_version`
+omitted to publish `model_version` / `seed` / `lang` / `as_of` for
+audit; consumers that see a `provenance` block without
+`calib_version` MUST treat the response as raw.
+
+The `/v1/qa` `score` semantics and the `/v1/classifications`
+evidence-form response both key on `provenance.calib_version` — see
+the per-endpoint sections above.
 
 ---
 

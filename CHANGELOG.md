@@ -6,6 +6,38 @@ versions follow [SemVer](https://semver.org/).
 
 ## [Unreleased]
 
+### Spec
+
+- **HT-compat v1.1.1 — evidence-form response + provenance.** An
+  additive point revision of the spec, negotiated directly with
+  mei (compliance-model output contract owner) after her
+  correction that lawrence2's "locked" was forward-looking.
+  Non-breaking against v1.1 clients and v1.1 servers:
+  - `/v1/classifications`: opt-in `response_form: "evidence"`
+    variant that wires Dirichlet concentrations (`evidence` +
+    `base_rate` per-label, top-level `prior_weight` frozen at
+    `2.0`) so Subjective-Logic consumers derive `(b, d, u)`
+    natively via `u = W / (Σe + W)`. The full K-class set is
+    required (a missing label ≠ evidence 0).
+  - `/v1/qa`: optional `evidence: number ≥ 0` alongside `score`
+    for span-head evidence mass. `score` semantics
+    disambiguated — calibrated span probability when
+    `provenance.calib_version` is present, raw span-softmax
+    otherwise.
+  - `/v1/reranking`: `relevance_score` domain documented — raw
+    cross-encoder logit in ℝ by default; servers emitting a
+    calibrated `[0, 1]` value MUST advertise it via
+    `relevance_score_calibrated: true` so consumers don't
+    double-sigmoid.
+  - **Optional top-level `provenance`** on all three v1.1
+    endpoints: `{model_version, seed, calib_version, lang,
+    as_of}`. Load-bearing when present; missing = uncalibrated
+    raw model output. `lang` uses BCP-47 (Norwegian Bokmål is
+    `nb`, not the macrolanguage `no`).
+  - Version bump: `X-HT-Compat: 1.1.1`. v1.1 clients hitting
+    v1.1.1 servers see missing optional fields; v1.1.1 clients
+    hitting v1.1 servers get the standard v1.1 response shape.
+
 ### Documentation
 
 - **Repetition penalty + sampling parameters.** Documented the
