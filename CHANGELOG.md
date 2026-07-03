@@ -6,6 +6,22 @@ versions follow [SemVer](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.4.3] — 2026-07-03
+
+A minor patch release covering the 12-day maintenance stretch since
+v0.4.2 plus one genuine spec bump. The headline change is the
+HT-compat v1.1.1 point revision (evidence-form response variant on
+`/v1/classifications`, optional `evidence` on `/v1/qa`, documented
+`relevance_score` domain on `/v1/reranking`, and an optional
+top-level `provenance` block on all three v1.1 endpoints) —
+negotiated directly with the downstream Subjective-Logic consumer
+so the wire contract locks against a real producer/consumer pair.
+Everything else is administrative hygiene: doc/catalog drift closed
+in both reference docs, structural CI check to prevent recurrence,
+`Phase B skipped for admin/list routes` moved from hardcoded tuple
+to `Endpoint.phase_b_skip=True`, more CLI-dispatch test coverage,
+the OpenAI unauth baseline refreshed against a fresh probe.
+
 ### Spec
 
 - **HT-compat v1.1.1 — evidence-form response + provenance.** An
@@ -54,6 +70,9 @@ versions follow [SemVer](https://semver.org/).
 
 ### CI
 
+- **`actions/checkout` bumped v6 → v7** across `ci.yml`, `docs.yml`,
+  and `openai-canary.yml` via the grouped monthly dependabot PR.
+  (PR #94.)
 - **Catalog-vs-docs drift check.** Implements option 1 of RFC #87:
   a 60-line script + pytest case that asserts every openai-profile
   path in `endpoints.py` appears verbatim in
