@@ -1075,6 +1075,7 @@ not pin in v1.1. Sketches here are non-normative.
   rejects the field with **400** and
   `error.code: "object_prompts_not_supported"` (501 stays reserved
   for whole-endpoint capability gating).
+* **Per-model capability advertisement.** Each entry in `/v1/models`
   gains an optional `x_ht_compat` field (e.g. `["reranking", "omni"]`)
   so clients can pick the right model without trial-and-error.
 * **Omni multi-turn audio reuse.** Allow clients to reference a
