@@ -250,6 +250,7 @@ def test_phase_b_chat_omni_passes_with_audio_in_message():
             json={
                 "id": "chatcmpl-1",
                 "object": "chat.completion",
+                "created": 1,
                 "model": "qwen2.5-omni-7b",
                 "choices": [
                     {

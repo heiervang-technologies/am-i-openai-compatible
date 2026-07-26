@@ -56,11 +56,13 @@ endpoints for.
 
 * **Single command, no auth, no spinup.** `aioc probe URL` works
   against a running server. No SDK, no API key.
-* **Tiny budget.** ≤ 2 requests per endpoint per run, `max_tokens=4`,
-  512×512 images. Safe to point at production.
-* **Real validation, not just `200 OK`.** Bodies are validated against
-  Pydantic models that mirror OpenAI's response shapes. Extras are
-  allowed (servers add fields), but the shape must match.
+* **Tiny budget.** One shared `/v1/models` discovery request, then ≤ 2
+  requests per selected endpoint, with `max_tokens=4` and 512×512
+  images. Safe to point at production.
+* **Real validation, not just `200 OK`.** Standard surfaces with a
+  registered response schema are validated against Pydantic models;
+  the remaining surfaces enforce their cataloged key contracts.
+  Extras are allowed so server-added metadata doesn't fail validation.
 * **No cluster assumptions.** The probe doesn't know about your
   setup. It only knows the spec, which is one Python file.
 * **Open catalog.** Spec drift goes through pull requests. Every entry

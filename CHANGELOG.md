@@ -6,6 +6,19 @@ versions follow [SemVer](https://semver.org/).
 
 ## [Unreleased]
 
+### Fixed
+
+- Bearer authentication now applies to REST and WebSocket probes, with
+  explicit CLI input taking precedence over `OPENAI_API_KEY` and
+  `AIOC_API_KEY`.
+- Phase B now uses the public Pydantic response models on catalog rows
+  that declare one; remaining rows retain explicit key/content checks.
+- Missing `ext` routes now SKIP as documented, and model-specific Phase
+  B calls SKIP when no matching model is discoverable instead of using
+  an arbitrary model of the wrong kind.
+- The initial `/v1/models` response is reused for discovery, liveness,
+  and the models catalog row, removing duplicate discovery requests.
+
 ## [0.4.3] — 2026-07-03
 
 A minor patch release covering the 12-day maintenance stretch since

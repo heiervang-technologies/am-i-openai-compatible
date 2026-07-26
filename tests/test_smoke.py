@@ -31,6 +31,14 @@ def test_catalog_kinds_are_known():
         assert e.kind in valid, f"{e.path} has unknown kind {e.kind!r}"
 
 
+def test_catalog_response_models_are_registered():
+    from am_i_openai_compatible.probe import RESPONSE_MODELS
+
+    for endpoint in aioc.ENDPOINTS:
+        if endpoint.response_model:
+            assert endpoint.response_model in RESPONSE_MODELS
+
+
 def test_catalog_vs_docs_no_drift():
     """The reference docs (canonical-surface.md, compatibility-matrix.md)
     are hand-curated mirrors of the openai-profile catalog. Closes the

@@ -27,6 +27,7 @@ import argparse
 import base64
 import io
 import json
+import os
 import re
 import sys
 import time
@@ -36,6 +37,7 @@ from pathlib import Path
 from typing import Any
 
 import httpx
+from pydantic import BaseModel, ValidationError
 
 try:
     # websockets is a hard dep at runtime; the import is wrapped so the
@@ -49,6 +51,32 @@ except ImportError:  # pragma: no cover — exercised only by minimal installs
     _WSConnectionClosed = Exception  # type: ignore[assignment, misc]
 
 from .endpoints import ENDPOINTS, Endpoint
+from .schemas import (
+    ChatCompletionChunk,
+    ChatCompletionResponse,
+    CompletionResponse,
+    EmbeddingsResponse,
+    ImagesResponse,
+    ListModelsResponse,
+    ModelObject,
+    TranscriptionJSON,
+    VideoJob,
+)
+
+RESPONSE_MODELS: dict[str, type[BaseModel]] = {
+    model.__name__: model
+    for model in (
+        ChatCompletionChunk,
+        ChatCompletionResponse,
+        CompletionResponse,
+        EmbeddingsResponse,
+        ImagesResponse,
+        ListModelsResponse,
+        ModelObject,
+        TranscriptionJSON,
+        VideoJob,
+    )
+}
 
 # ---------------------------------------------------------------------------
 # Tiny synthetic media — kept frugal (1 s of silence, 1×1 PNG) to minimize
@@ -287,18 +315,38 @@ class Prober:
         self.phase_b = phase_b
         self.profile = profile
         self.model_override = model or None
-        self.api_key = api_key or None
+        self.api_key = (
+            api_key
+            if api_key is not None
+            else (os.environ.get("OPENAI_API_KEY") or os.environ.get("AIOC_API_KEY") or None)
+        )
         self.conn_timeout = conn_timeout
         self.req_timeout = req_timeout
+        token = self._bearer_token()
+        headers = {"Authorization": f"Bearer {token}"} if token else None
         self.client = httpx.Client(
-            timeout=httpx.Timeout(req_timeout, connect=conn_timeout), http2=http2
+            timeout=httpx.Timeout(req_timeout, connect=conn_timeout),
+            http2=http2,
+            headers=headers,
         )
         self.events: list[Event] = []
         self.models_by_kind: dict[str, list[str]] = {}
         self._models_raw: list[dict] = []
+        self._models_response: httpx.Response | None = None
         self._endpoints_filter = re.compile(endpoints_filter) if endpoints_filter else None
 
     # -- network primitives -------------------------------------------------
+
+    def _bearer_token(self) -> str | None:
+        """Return normalized bearer token without duplicate Bearer prefix or whitespace."""
+        if not self.api_key:
+            return None
+        raw = self.api_key.strip()
+        if not raw:
+            return None
+        if raw.lower().startswith("bearer "):
+            return raw[7:].strip()
+        return raw
 
     def _emit(self, ev: Event) -> None:
         self.events.append(ev)
@@ -306,17 +354,19 @@ class Prober:
     def _liveness(self) -> tuple[bool, str]:
         try:
             r = self.client.get(self.base + "/v1/models", timeout=self.conn_timeout)
+            self._models_response = r
             return True, f"GET /v1/models -> {r.status_code}"
         except httpx.ConnectError as e:
             return False, f"connection refused ({e.__class__.__name__})"
+        except httpx.TimeoutException as e:
+            return False, f"connection timeout ({e.__class__.__name__})"
         except httpx.HTTPError as e:
-            # 4xx on /v1/models still means the host is up.
+            # 4xx/5xx responses or other transport errors where host responded
             return True, f"reachable ({e.__class__.__name__})"
 
     def _sniff_models(self) -> None:
-        try:
-            r = self.client.get(self.base + "/v1/models")
-        except httpx.HTTPError:
+        r = self._models_response
+        if r is None:
             return
         if r.status_code != 200:
             return
@@ -342,12 +392,14 @@ class Prober:
         Precedence:
           1. If --model NAME is set AND the override's classified kind
              includes ep.requires_model_kind (or ep has no kind
-             requirement), use the override. This handles the
-             router-mode case where /v1/models[0] is arbitrary and the
-             operator wants to pin a known-good model.
+             requirement), use the override.
           2. First model classified as ep.requires_model_kind.
-          3. First model in /v1/models (last-resort fallback).
-          4. None — Phase B should SKIP.
+          3. If no model of required kind was discovered in /v1/models but
+             --model NAME was explicitly provided, use the override.
+          4. For endpoints without a required kind, first model in
+             /v1/models.
+          5. None — Phase B should SKIP rather than sending a request
+             to a model known to be the wrong kind.
         """
         if self.model_override:
             override = self.model_override
@@ -355,15 +407,17 @@ class Prober:
             if ep.requires_model_kind is None or ep.requires_model_kind in override_kinds:
                 return override
             # Override doesn't match the endpoint's required kind; fall
-            # through to the kind-based selection so e.g.
-            # `--model borealis-4b` doesn't break /v1/embeddings.
+            # through to kind-based selection, but retain override as fallback.
         if ep.requires_model_kind:
             opts = self.models_by_kind.get(ep.requires_model_kind, [])
             if opts:
                 return opts[0]
+            if self.model_override:
+                return self.model_override
+            return None
         if self._models_raw:
             return self._models_raw[0].get("id")
-        return None
+        return self.model_override
 
     # -- WebSocket primitives -----------------------------------------------
 
@@ -374,8 +428,9 @@ class Prober:
 
     def _ws_headers(self) -> dict[str, str]:
         h: dict[str, str] = {}
-        if self.api_key:
-            h["Authorization"] = f"Bearer {self.api_key}"
+        token = self._bearer_token()
+        if token:
+            h["Authorization"] = f"Bearer {token}"
         # OpenAI's Realtime API uses the openai-beta subprotocol header.
         # Cheap to set; servers that don't care ignore it.
         h["openai-beta"] = "realtime=v1"
@@ -405,7 +460,10 @@ class Prober:
             ):
                 return "PASS", "ws upgrade ok", 101
         except Exception as exc:  # websockets raises a variety of types
-            return self._ws_handshake_error(exc)
+            status, detail, code = self._ws_handshake_error(exc)
+            if code == 404 and ep.kind == "ext":
+                return "SKIP", "404 — extension not offered", 404
+            return status, detail, code
 
     def _ws_handshake_error(self, exc: BaseException) -> tuple[str, str, int]:
         """Map a websockets connect failure to a (status, detail, code)."""
@@ -524,7 +582,9 @@ class Prober:
         url = self.base + path.split("[")[0]
         method = ep.method
         try:
-            if method == "GET":
+            if ep.path == "/v1/models" and self._models_response is not None:
+                r = self._models_response
+            elif method == "GET":
                 r = self.client.get(url)
             elif method == "POST":
                 if ep.multipart:
@@ -542,6 +602,8 @@ class Prober:
         if r.status_code == 404:
             if ep.kind == "optional":
                 return "WARN", "404 — capability not offered", 404
+            if ep.kind == "ext":
+                return "SKIP", "404 — extension not offered", 404
             # `ours` rows are only probed under --profile ht (filtered out
             # otherwise), so a 404 here means the server claims HT-compat
             # but is missing a required endpoint — grade as FAIL, same
@@ -574,7 +636,10 @@ class Prober:
                 return "SKIP", "no models to template", 0
             path = path.replace("{model}", self._models_raw[0]["id"])
         try:
-            r = self.client.get(self.base + path)
+            if ep.path == "/v1/models" and self._models_response is not None:
+                r = self._models_response
+            else:
+                r = self.client.get(self.base + path)
         except httpx.HTTPError as e:
             return "FAIL", f"http error: {e}", 0
         if r.status_code == 501:
@@ -676,6 +741,16 @@ class Prober:
                         evt = json.loads(data)
                     except ValueError:
                         continue
+                    if isinstance(evt, dict):
+                        # Ignore non-completion control/ping events
+                        if evt.get("type") in ("ping", "keep-alive") or evt.get("event") in (
+                            "ping",
+                            "keep-alive",
+                        ):
+                            continue
+                    schema_error = self._pydantic_error(ep, evt)
+                    if schema_error:
+                        return "FAIL", f"SSE {schema_error}", status
                     chunks += 1
                     ok, dc = _get_dotted(evt, "choices.0.delta.content")
                     if ok and isinstance(dc, str):
@@ -740,7 +815,28 @@ class Prober:
                     f"empty content (200 OK, {ep.content_path}=len {len(val)})",
                     http_status,
                 )
-        return "PASS", "shape ok", http_status
+        schema_error = self._pydantic_error(ep, body)
+        if schema_error:
+            return "FAIL", schema_error, http_status
+        if ep.response_model:
+            return "PASS", f"shape ok ({ep.response_model})", http_status
+        return "PASS", "shape ok (key contract)", http_status
+
+    @staticmethod
+    def _pydantic_error(ep: Endpoint, body: Any) -> str:
+        """Return a compact validation error for cataloged Pydantic models."""
+        if not ep.response_model:
+            return ""
+        model = RESPONSE_MODELS.get(ep.response_model)
+        if model is None:
+            return f"unknown response model {ep.response_model!r}"
+        try:
+            model.model_validate(body)
+        except ValidationError as exc:
+            first = exc.errors(include_url=False)[0]
+            location = ".".join(str(part) for part in first["loc"]) or "<root>"
+            return f"schema mismatch ({ep.response_model}): {location}: {first['msg']}"
+        return ""
 
     # -- driver -------------------------------------------------------------
 
@@ -870,9 +966,9 @@ def _argparser() -> argparse.ArgumentParser:
         "--openai-api-key",
         default=None,
         help=(
-            "bearer token sent on WebSocket upgrades (only used by ws-protocol "
-            "rows like /v1/realtime; ignored for REST probes). Most OSS servers "
-            "accept the empty default; OpenAI-hosted endpoints require a real key."
+            "bearer token sent on every REST request and WebSocket upgrade. "
+            "Defaults to OPENAI_API_KEY, then AIOC_API_KEY, when unset. "
+            "Most OSS servers accept the empty default."
         ),
     )
     return p

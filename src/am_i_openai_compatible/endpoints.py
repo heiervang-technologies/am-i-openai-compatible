@@ -26,11 +26,14 @@ Each endpoint declares:
                                  a 404 is graded as FAIL (the server
                                  claims HT-compat but is missing a
                                  required endpoint).
-  existence_only    if True, never run Phase B (just check 404 vs not)
+  phase_b_skip      if True, never run Phase B (just check 404 vs not)
   body              JSON body for the minimal Phase B call, or None.
                     {model} is substituted from a sniffed id.
   multipart         if True, body is form fields and a tiny WAV/PNG
                     file is attached (path keyed by name).
+  response_model    name of the Pydantic response model used for full
+                    Phase B validation, or "" when the catalog's dotted
+                    key contract is the only available validator.
   expects           shape validator: list of "key.path" that must be
                     present in the JSON response, or one of the
                     sentinel strings:
@@ -53,6 +56,7 @@ class Endpoint:
     body: dict | None = None
     multipart: bool = False
     expects: object = ()  # tuple of dotted keys, or sentinel str
+    response_model: str = ""  # Pydantic model name from schemas.py
     requires_model_kind: str | None = None  # "chat" | "embed" | "asr" | …
     notes: str = ""
     protocol: str = "http"  # "http" (REST/SSE) or "ws" (WebSocket); ws rows
@@ -90,6 +94,7 @@ ENDPOINTS: list[Endpoint] = [
         group="models",
         kind="core",
         expects=("data",),
+        response_model="ListModelsResponse",
         notes="discovery; required for any compat surface",
     ),
     Endpoint(
@@ -98,6 +103,7 @@ ENDPOINTS: list[Endpoint] = [
         group="models",
         kind="core",
         expects=("id", "object"),
+        response_model="ModelObject",
         notes="retrieve a single model — many OSS impls return 404",
     ),
     # --- chat / completions ---------------------------------------------
@@ -113,6 +119,7 @@ ENDPOINTS: list[Endpoint] = [
             "temperature": 0,
         },
         expects=("choices.0.message.content", "choices.0.finish_reason"),
+        response_model="ChatCompletionResponse",
         requires_model_kind="chat",
         content_path="choices.0.message.content",
         min_content_length=1,
@@ -130,6 +137,7 @@ ENDPOINTS: list[Endpoint] = [
             "stream_options": {"include_usage": True},
         },
         expects="sse",
+        response_model="ChatCompletionChunk",
         requires_model_kind="chat",
         notes="separate row so a missing-stream regression is visible",
         min_content_length=1,
@@ -147,6 +155,7 @@ ENDPOINTS: list[Endpoint] = [
             "top_logprobs": 3,
         },
         expects=("choices.0.logprobs.content",),
+        response_model="ChatCompletionResponse",
         requires_model_kind="chat",
         notes="many servers accept the params but never populate the field",
     ),
@@ -157,6 +166,7 @@ ENDPOINTS: list[Endpoint] = [
         kind="ext",
         body={"model": "{model}", "prompt": "hello", "max_tokens": 4},
         expects=("choices.0.text",),
+        response_model="CompletionResponse",
         requires_model_kind="chat",
         notes="legacy text completion — many newer servers omit it",
         content_path="choices.0.text",
@@ -214,6 +224,7 @@ ENDPOINTS: list[Endpoint] = [
         kind="optional",
         body={"model": "{model}", "input": "hi"},
         expects=("data.0.embedding",),
+        response_model="EmbeddingsResponse",
         requires_model_kind="embed",
         notes="config-gated: llama-server returns 501 unless --embeddings is set at startup",
     ),
@@ -226,6 +237,7 @@ ENDPOINTS: list[Endpoint] = [
         multipart=True,
         body={"model": "{model}", "response_format": "json"},
         expects=("text",),
+        response_model="TranscriptionJSON",
         requires_model_kind="asr",
         notes="capability-gated: missing on chat-only servers, not non-compliance",
     ),
@@ -237,6 +249,7 @@ ENDPOINTS: list[Endpoint] = [
         multipart=True,
         body={"model": "{model}", "response_format": "json"},
         expects=("text",),
+        response_model="TranscriptionJSON",
         requires_model_kind="asr",
         notes="OpenAI Whisper-only; vLLM transcription server omits it",
     ),
@@ -273,6 +286,7 @@ ENDPOINTS: list[Endpoint] = [
             "response_format": "b64_json",
         },
         expects=("data.0",),
+        response_model="ImagesResponse",
         requires_model_kind="image",
         notes="capability-gated: missing on chat-only servers, not non-compliance",
     ),
@@ -290,6 +304,7 @@ ENDPOINTS: list[Endpoint] = [
             "response_format": "b64_json",
         },
         expects=("data.0",),
+        response_model="ImagesResponse",
         requires_model_kind="image-edit",
         notes="OpenAI requires multipart/form-data with image+mask",
     ),
@@ -380,6 +395,7 @@ ENDPOINTS: list[Endpoint] = [
             "seconds": 1,
         },
         expects=("id", "status"),
+        response_model="VideoJob",
         requires_model_kind="video",
         notes="HT-compat: Sora-style video job submission (image_url tolerated; image-to-video models like LTX require it)",
     ),
@@ -452,6 +468,7 @@ ENDPOINTS: list[Endpoint] = [
             "max_tokens": 4,
         },
         expects=("choices.0.message.audio.data",),
+        response_model="ChatCompletionResponse",
         content_path="choices.0.message.audio.data",
         min_content_length=1,
         requires_model_kind="omni",
