@@ -17,6 +17,12 @@ from am_i_openai_compatible import render
 def _events():
     return [
         {"endpoint": "/v1/models", "phase": "A", "status": "PASS", "detail": "200"},
+        {
+            "endpoint": "implies: models list→retrieve",
+            "phase": "C",
+            "status": "PASS",
+            "detail": "consistent",
+        },
         {"endpoint": "/v1/chat/completions", "phase": "A", "status": "PASS", "detail": "400"},
         {"endpoint": "/v1/chat/completions", "phase": "B", "status": "PASS", "detail": "shape ok"},
         {"endpoint": "/v1/reranking", "phase": "A", "status": "WARN", "detail": "501 — not yet"},
@@ -33,6 +39,7 @@ def test_best_per_endpoint_prefers_more_informative_phase():
     # First-seen order preserved.
     assert [r["endpoint"] for r in rows] == [
         "/v1/models",
+        "implies: models list→retrieve",
         "/v1/chat/completions",
         "/v1/reranking",
         "/v1/segmentations",
@@ -60,6 +67,12 @@ def test_render_limit_caps_rows():
     out = render.render(_events(), limit=2, use_color=False)
     # Header (2 lines) + 2 data rows = 4 newlines.
     assert out.count("\n") == 4
+
+
+def test_render_includes_phase_c_implication():
+    out = render.render(_events(), use_color=False)
+    assert "implies: models list→retrieve" in out
+    assert "consistent" in out
 
 
 def test_render_file_round_trip(tmp_path):

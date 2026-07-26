@@ -60,4 +60,6 @@ ever hit `list`.
 
 The prober expects the `id` in the response to match the path
 parameter. A mismatch is a `WARN` (some servers return a normalized
-id) and worth investigating.
+id) and worth investigating. This is emitted as the derived Phase C
+event `implies: models list→retrieve`; it reuses the two Phase B
+responses and adds no request.

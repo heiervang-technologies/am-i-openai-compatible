@@ -167,6 +167,34 @@ def test_summary_picks_most_informative_event_per_endpoint(tmp_path, monkeypatch
     assert not any("PASS" in line for line in chat_lines)
 
 
+def test_summary_renders_phase_c_implications_section(tmp_path, monkeypatch):
+    pp = _load_postprocess()
+    report = _write_report(
+        tmp_path,
+        [
+            _make_event("/v1/models", "B", "PASS", detail="shape ok"),
+            _make_event(
+                "implies: models list→retrieve",
+                "C",
+                "WARN",
+                detail="listed id 'chat-1', retrieve returned 'other'",
+            ),
+        ],
+    )
+    monkeypatch.setenv("GITHUB_OUTPUT", str(tmp_path / "output"))
+    summary_file = tmp_path / "summary"
+    monkeypatch.setenv("GITHUB_STEP_SUMMARY", str(summary_file))
+
+    rc = pp.main(["--report", str(report), "--fail-on", "WARN", "--step-summary", "true"])
+
+    assert rc == 1
+    summary = summary_file.read_text()
+    assert "### Implications" in summary
+    implication_block = summary.split("### Implications", 1)[1]
+    assert "implies: models list→retrieve" in implication_block
+    assert "⚠️ WARN" in implication_block
+
+
 # ---------------------------------------------------------------------------
 # Profile + section-split rendering (HT-compat v0.2)
 # ---------------------------------------------------------------------------

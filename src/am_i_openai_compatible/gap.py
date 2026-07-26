@@ -44,7 +44,7 @@ HERE = Path(__file__).resolve().parent
 class Cell:
     status: str  # PASS / WARN / FAIL / SKIP / ABSENT
     detail: str
-    phase: str = ""  # "A" / "B" / "" if N/A
+    phase: str = ""  # "A" / "B" / "C" / "" if N/A
 
 
 def _best_event_for(events: list[dict], endpoint: str) -> Cell:

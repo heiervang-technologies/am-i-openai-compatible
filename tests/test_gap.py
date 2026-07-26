@@ -83,6 +83,31 @@ def test_gap_handles_malformed_events_without_crashing():
         assert rc == 0
 
 
+def test_gap_ignores_phase_c_pseudo_endpoints():
+    with tempfile.TemporaryDirectory() as d:
+        tmp = Path(d)
+        implication = _ev("implies: models list→retrieve", status="FAIL", phase="C")
+        mp = _write(tmp, "mono.json", [implication])
+        cp = _write(tmp, "clu.json", [])
+        out_path = tmp / "GAP.md"
+
+        rc = gap.main(
+            [
+                "--monolith",
+                str(mp),
+                "--cluster",
+                str(cp),
+                "--format",
+                "markdown",
+                "-o",
+                str(out_path),
+            ]
+        )
+
+        assert rc == 0
+        assert "implies: models list→retrieve" not in out_path.read_text()
+
+
 def test_gap_broken_in_monolith_when_monolith_fails_cluster_passes():
     """Verdict path: monolith has the route but it FAILs; cluster
     covers it with PASS. Verdict should be BROKEN-IN-MONOLITH and
