@@ -1143,7 +1143,12 @@ def test_model_override_fallback_when_kind_unrecognized():
     )
     embeddings = respx.post(f"{BASE}/v1/embeddings").mock(
         return_value=httpx.Response(
-            200, json={"object": "list", "data": [{"object": "embedding", "index": 0, "embedding": [0.1]}], "model": "custom-vec"}
+            200,
+            json={
+                "object": "list",
+                "data": [{"object": "embedding", "index": 0, "embedding": [0.1]}],
+                "model": "custom-vec",
+            },
         )
     )
 
@@ -1168,10 +1173,12 @@ def test_phase_b_sse_ignores_non_completion_control_events():
         'data: {"type": "ping"}\n\n'
         'data: {"id": "c1", "object": "chat.completion.chunk", "created": 1, "model": "m1", '
         '"choices": [{"index": 0, "delta": {"content": "hi"}}]}\n\n'
-        'data: [DONE]\n\n'
+        "data: [DONE]\n\n"
     )
     respx.post(f"{BASE}/v1/chat/completions").mock(
-        return_value=httpx.Response(200, headers={"content-type": "text/event-stream"}, content=sse_body)
+        return_value=httpx.Response(
+            200, headers={"content-type": "text/event-stream"}, content=sse_body
+        )
     )
 
     p = Prober(BASE, "test", endpoints_filter=r"^/v1/chat/completions\[stream\]$")
@@ -1179,3 +1186,25 @@ def test_phase_b_sse_ignores_non_completion_control_events():
     phase_b = next(e for e in events if e.phase == "B")
     assert phase_b.status == "PASS"
 
+
+@respx.mock
+def test_phase_b_sse_rejects_unknown_non_chunk_events():
+    respx.get(f"{BASE}/v1/models").mock(
+        return_value=httpx.Response(200, json={"data": [{"id": "chat-1"}]})
+    )
+    respx.post(f"{BASE}/v1/chat/completions").mock(
+        return_value=httpx.Response(
+            200,
+            headers={"content-type": "text/event-stream"},
+            content='data: {"unexpected": true}\n\ndata: [DONE]\n\n',
+        )
+    )
+
+    events = Prober(
+        BASE,
+        "test",
+        endpoints_filter=r"^/v1/chat/completions\[stream\]$",
+    ).run()
+    phase_b = next(e for e in events if e.phase == "B")
+    assert phase_b.status == "FAIL"
+    assert "schema mismatch (ChatCompletionChunk)" in phase_b.detail

@@ -743,9 +743,10 @@ class Prober:
                         continue
                     if isinstance(evt, dict):
                         # Ignore non-completion control/ping events
-                        if evt.get("type") in ("ping", "keep-alive") or evt.get("event") in ("ping", "keep-alive"):
-                            continue
-                        if ep.response_model == "ChatCompletionChunk" and evt.get("object") != "chat.completion.chunk" and "choices" not in evt:
+                        if evt.get("type") in ("ping", "keep-alive") or evt.get("event") in (
+                            "ping",
+                            "keep-alive",
+                        ):
                             continue
                     schema_error = self._pydantic_error(ep, evt)
                     if schema_error:
