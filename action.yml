@@ -38,7 +38,7 @@ inputs:
     required: false
     default: ""
   openai-api-key:
-    description: "Bearer token for WebSocket upgrades on /v1/realtime-style rows (ignored for REST endpoints). OSS servers usually accept the empty default; OpenAI-hosted targets require a real key. Use a GitHub Secret."
+    description: "Bearer token for every REST request and WebSocket upgrade. OSS servers usually accept the empty default; OpenAI-hosted targets require a real key. Use a GitHub Secret."
     required: false
     default: ""
   fail-on:

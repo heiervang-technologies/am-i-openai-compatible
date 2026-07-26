@@ -36,8 +36,9 @@ gradually.
   `/api/embed`, you get features (model pulling, parameter passing
   via Modelfile) that don't have OpenAI analogs.
 * **Concurrency.** Ollama serializes requests per loaded model. The
-  prober's ≤2 requests/endpoint budget is fine, but concurrent
-  pytest runs against the same Ollama instance will queue.
+  prober makes one shared discovery call and at most two requests per
+  selected endpoint, but concurrent pytest runs against the same
+  Ollama instance will queue.
 
 ## See also
 

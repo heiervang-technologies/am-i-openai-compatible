@@ -8,11 +8,12 @@ claims to be OpenAI-compatible should match the relevant subset.
 
 Every entry in the catalog is tagged with a **kind**:
 
-| Kind   | Meaning                                                                                              | If missing |
-|--------|------------------------------------------------------------------------------------------------------|------------|
-| `core` | Required by the canonical OpenAI API as it stands today.                                             | `FAIL`     |
-| `ext`  | An OpenAI extension or successor surface (`/v1/responses`) that newer servers may opt into.          | `SKIP`     |
-| `ours` | Project-specific extension this catalog tracks because OSS servers ship them (e.g. `/v1/videos`).    | `SKIP`     |
+| Kind       | Meaning                                                                                     | If missing |
+|------------|---------------------------------------------------------------------------------------------|------------|
+| `core`     | Required by the canonical OpenAI API as it stands today.                                    | `FAIL`     |
+| `optional` | Capability-gated surface such as embeddings, audio, or images.                              | `WARN`     |
+| `ext`      | OpenAI extension or successor surface (`/v1/responses`) that newer servers may opt into.    | `SKIP`     |
+| `ours`     | Required by the HT profile; excluded from the default OpenAI profile.                       | `FAIL` under `--profile ht` |
 
 Why distinguish? A server with no `/v1/embeddings` is broken if it
 claims chat *and* embeddings. A server without `/v1/responses` is just
@@ -25,15 +26,15 @@ The prober runs every endpoint through up to two phases:
 * **Phase A — existence.** Send the cheapest probe that should not
   return `404`. Anything else (`200`, `400`, `405`, `415`, `422`,
   `429`) means "the route is wired up".
-* **Phase B — signature compliance.** Send one minimal valid request,
-  validate the response against a Pydantic model that mirrors OpenAI's
-  shape. Extras are allowed (servers add fields). Missing required
-  fields fail.
+* **Phase B — signature compliance.** Send one minimal valid request.
+  Rows with a registered response model are Pydantic-validated after
+  their content/key checks; rows without one enforce the dotted-key
+  contract in the catalog. Extras are allowed.
 
 Phase B is skipped when:
 
-* The catalog entry is `existence_only` (e.g. `/v1/files` upload —
-  uploading bytes for a probe is wasteful).
+* The catalog entry has `phase_b_skip=True` (admin/list routes such as
+  `/v1/files`, where an unauthenticated signature call adds no signal).
 * `--skip-phase-b` is passed.
 * No usable model can be sniffed from `/v1/models` for an endpoint
   that needs one. (Then it reports `SKIP — no model available`.)

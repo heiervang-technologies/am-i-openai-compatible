@@ -132,9 +132,8 @@ def _reject(status: int):
     return process_request
 
 
-def test_ws_phase_a_404_is_fail():
-    """A WS upgrade attempt that gets HTTP 404 from the server should
-    grade Phase A as FAIL — the route doesn't exist."""
+def test_ws_phase_a_404_on_ext_is_skip():
+    """A missing optional extension is absent, not a compliance failure."""
 
     def handler(ws):
         pass  # never reached
@@ -143,7 +142,7 @@ def test_ws_phase_a_404_is_fail():
         p = Prober(base, "test", phase_b=False, endpoints_filter=r"^/v1/realtime$")
         events = p.run()
     rows = _events_by_endpoint(events, "/v1/realtime")
-    assert rows and rows[0].status == "FAIL"
+    assert rows and rows[0].status == "SKIP"
     assert "404" in rows[0].detail
 
 

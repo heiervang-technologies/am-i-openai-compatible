@@ -15,18 +15,18 @@ extensions that haven't propagated to OSS servers:
 * `/v1/batches` — async batch processing at half price.
 * `/v1/realtime` — WebSocket-based bidirectional streaming.
 
-The catalog tracks the first three as `ext`. Assistants, batches, and
-realtime are intentionally **out of scope** — they're shaped
-differently enough that probing them as "OpenAI-compatible" against an
-OSS server doesn't tell you anything useful.
+The catalog tracks Responses, speech, files, batches, uploads, and
+Realtime. Threads and Assistants remain intentionally **out of scope**:
+their multi-step stateful workflows do not fit the probe's two-phase
+endpoint contract.
 
 ## Auth
 
-`Authorization: Bearer <key>` is required. The prober sends the key
-from `OPENAI_API_KEY` (or `AIOC_API_KEY`).
+`Authorization: Bearer <key>` is required. Pass `--openai-api-key`, or
+set `OPENAI_API_KEY` (`AIOC_API_KEY` is the fallback).
 
-`OpenAI-Beta` headers gate features that are in flight. The prober
-doesn't add them — we want to compare against the *stable* surface.
+`OpenAI-Beta` headers gate features that are in flight. The prober only
+adds `openai-beta: realtime=v1` for the Realtime WebSocket row.
 
 ## Probing OpenAI itself
 
@@ -42,9 +42,9 @@ not OpenAI.
 
 ## Things to keep in mind
 
-* **Rate limits.** Even with `aioc`'s ≤ 2 requests / endpoint budget,
-  a free-tier key may hit the per-minute cap on the chat probe. Use a
-  paid tier or expect SKIP rows.
+* **Rate limits.** Even with one shared discovery call and at most two
+  requests per selected endpoint, a free-tier key may hit the
+  per-minute cap on the chat probe. Use a paid tier or expect SKIP rows.
 * **Cost.** `max_tokens=4` keeps each chat call to ~¢0.001 on
   `gpt-4o-mini`. Image generation is ~¢4 per call (`512x512, n=1` on
   `gpt-image-1`). The full probe is roughly $0.05 against the cheapest

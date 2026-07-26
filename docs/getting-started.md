@@ -53,8 +53,8 @@ aioc render llama.json
 ```
 Endpoint                        Status    Detail
 ──────────────────────────────  ──────    ────────────────────────────
-/v1/models                      ● PASS    shape ok
-/v1/chat/completions            ● PASS    shape ok
+/v1/models                      ● PASS    shape ok (ListModelsResponse)
+/v1/chat/completions            ● PASS    shape ok (ChatCompletionResponse)
 /v1/chat/completions[stream]    ● PASS    chunks=9, [DONE]=True
 /v1/embeddings                  ▲ WARN    501 — endpoint is disabled
 /v1/audio/speech                ▲ WARN    404 — capability not offered
@@ -131,8 +131,10 @@ which renders the same data with prose context.
 
 ## What if my server needs auth?
 
-Set `OPENAI_API_KEY` (or `AIOC_API_KEY`) in your environment; the
-prober forwards it as `Authorization: Bearer …` to every request.
+Pass `--openai-api-key`, or set `OPENAI_API_KEY` (then `AIOC_API_KEY`
+as the fallback). The prober forwards it as `Authorization: Bearer …`
+to every REST request and WebSocket upgrade. An explicit CLI value
+takes precedence over both environment variables.
 
 ## What if my server lives behind a custom path prefix?
 

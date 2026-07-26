@@ -1,10 +1,8 @@
 """Smoke tests for the public-API pydantic schemas.
 
 `am_i_openai_compatible.schemas` exports pydantic models that mirror
-the OpenAI response shapes. They're consumed by external code that
-wants to validate responses; the prober itself uses
-`_get_dotted` instead. Until this file existed, the schemas had
-zero test coverage despite being a public API.
+the OpenAI response shapes. They're consumed both by external code
+and by catalog rows whose Phase B response has a registered model.
 
 These tests lock in:
 - Real OpenAI-shape responses parse without error

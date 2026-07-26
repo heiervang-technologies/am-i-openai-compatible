@@ -94,7 +94,7 @@ Endpoint                        Status    Detail
 /v1/chat/completions            ● PASS    400 (route exists)
 /v1/chat/completions[stream]    ● PASS    400 (route exists)
 /v1/chat/completions[logprobs]  ● PASS    400 (route exists)
-/v1/completions                 ✖ FAIL    404 — endpoint absent
+/v1/completions                 ○ SKIP    404 — extension not offered
 ```
 
 `render` picks one event per endpoint by priority: FAIL > WARN > Phase
@@ -107,8 +107,8 @@ B PASS > Phase A PASS > SKIP. Status semantics:
   doesn't serve.
 * `FAIL` — 404 on a `core` row, schema mismatch on Phase B, or a 404
   on an HT-compat `ours` row under `--profile ht`.
-* `SKIP` — Phase A unreachable, or Phase B with no model of the
-  required kind discoverable from `/v1/models`.
+* `SKIP` — Phase A unreachable, a missing `ext` route, or Phase B with
+  no model of the required kind discoverable from `/v1/models`.
 
 ## What the prober does
 
@@ -117,14 +117,17 @@ Two phases per endpoint:
 * **Phase A — existence.** A minimal probe (`GET`, `OPTIONS`, or empty
   `POST`) decides if the route is wired up at all. Anything other than
   `404` or connection-refused counts as "exists".
-* **Phase B — signature compliance.** One minimal valid request,
-  validated against a Pydantic model that matches OpenAI's response
-  shape. Bodies are tiny: `max_tokens=4`, 512×512 images, 1 s of silent
-  WAV. Video creation is tested via job submission only — the prober
-  never waits for completion.
+* **Phase B — signature compliance.** One minimal valid request. Standard
+  response surfaces with a registered schema are Pydantic-validated;
+  newer and project-specific surfaces use their cataloged key contract
+  until a full model is available. Bodies are tiny: `max_tokens=4`,
+  512×512 images, 1 s of silent WAV. Video creation is tested via job
+  submission only — the prober never waits for completion.
 
-Total budget: **≤ 2 requests per endpoint per run**. Safe to point at a
-production server on a coffee break.
+Total budget: **one shared `/v1/models` discovery/liveness request, then
+≤ 2 requests per selected endpoint**. The discovery response is reused
+for the `/v1/models` row itself. Safe to point at a production server on
+a coffee break.
 
 ## Why does this exist?
 

@@ -85,7 +85,7 @@ Probe behavior:
 
 * **Phase A** = "did the upgrade succeed?". Grading mirrors HTTP:
   * `101 Switching Protocols` (accepted) → PASS
-  * `404` on the upgrade → FAIL (route absent)
+  * `404` on the upgrade → SKIP (optional extension not offered)
   * `401`/`403` → WARN — "auth required" — endpoint exists, we just
     don't have a bearer. Pass `--openai-api-key` (or the `model:`
     action input's sibling `openai-api-key:`) to authenticate.
@@ -130,8 +130,8 @@ markers OpenAI doesn't expose). Clients MUST NOT inspect or modify
 it.
 
 OSS-server status: essentially nobody implements this today. The
-catalog probes it as `kind="ext"`; expect ❌ on every non-OpenAI
-endpoint. Implementing it server-side without OpenAI's encryption
+catalog probes it as `kind="ext"`; expect a SKIP on non-OpenAI
+endpoints. Implementing it server-side without OpenAI's encryption
 key requires either:
 
 * A plaintext fallback (drops the tamper-resistance property but

@@ -105,6 +105,49 @@ def test_server_error_message_empty_body_uses_http_code():
     assert _server_error_message(r) == "HTTP 503"
 
 
+@respx.mock
+def test_bearer_token_is_sent_on_rest_discovery_and_endpoint_requests():
+    models = respx.get(f"{BASE}/v1/models").mock(
+        return_value=httpx.Response(200, json={"data": [{"id": "chat-1"}]})
+    )
+    chat = respx.post(f"{BASE}/v1/chat/completions").mock(return_value=httpx.Response(422))
+
+    Prober(
+        BASE,
+        "test",
+        phase_b=False,
+        api_key="sk-test-rest",
+        endpoints_filter=r"^/v1/chat/completions$",
+    ).run()
+
+    assert models.calls.last.request.headers["Authorization"] == "Bearer sk-test-rest"
+    assert chat.calls.last.request.headers["Authorization"] == "Bearer sk-test-rest"
+
+
+def test_api_key_environment_fallback_and_precedence(monkeypatch):
+    monkeypatch.setenv("OPENAI_API_KEY", "sk-openai")
+    monkeypatch.setenv("AIOC_API_KEY", "sk-aioc")
+
+    from_openai_env = Prober(BASE, "test")
+    try:
+        assert from_openai_env.api_key == "sk-openai"
+    finally:
+        from_openai_env.client.close()
+
+    explicit = Prober(BASE, "test", api_key="sk-explicit")
+    try:
+        assert explicit.api_key == "sk-explicit"
+    finally:
+        explicit.client.close()
+
+    monkeypatch.delenv("OPENAI_API_KEY")
+    from_aioc_env = Prober(BASE, "test")
+    try:
+        assert from_aioc_env.api_key == "sk-aioc"
+    finally:
+        from_aioc_env.client.close()
+
+
 def test_classify_kind_uses_lexical_hints():
     assert "embed" in _classify_kind("text-embedding-ada-002")
     assert "asr" in _classify_kind("whisper-large-v3")
@@ -227,6 +270,21 @@ def test_phase_a_404_on_optional_is_warn():
     events = p.run()
     rows = _events_by_endpoint(events, "/v1/audio/transcriptions")
     assert any(e.status == "WARN" and "capability not offered" in e.detail for e in rows)
+
+
+@respx.mock
+def test_phase_a_404_on_ext_is_skip():
+    respx.get(f"{BASE}/v1/models").mock(
+        return_value=httpx.Response(200, json={"data": [{"id": "chat-1"}]})
+    )
+    respx.post(f"{BASE}/v1/completions").mock(return_value=httpx.Response(404))
+
+    events = Prober(BASE, "test", endpoints_filter=r"^/v1/completions$").run()
+    rows = _events_by_endpoint(events, "/v1/completions")
+    assert len(rows) == 1
+    assert rows[0].phase == "A"
+    assert rows[0].status == "SKIP"
+    assert "extension not offered" in rows[0].detail
 
 
 @respx.mock
@@ -354,6 +412,32 @@ def test_phase_b_chat_fails_when_required_keys_missing():
     assert failure is not None
     assert failure.status == "FAIL"
     assert "missing keys" in failure.detail
+
+
+@respx.mock
+def test_phase_b_chat_uses_pydantic_after_key_contract_checks():
+    """A payload containing the dotted keys can still violate the model."""
+    respx.get(f"{BASE}/v1/models").mock(
+        return_value=httpx.Response(200, json={"data": [{"id": "chat-1"}]})
+    )
+    respx.post(f"{BASE}/v1/chat/completions").mock(
+        return_value=httpx.Response(
+            200,
+            json={
+                "choices": [
+                    {
+                        "message": {"content": "hi"},
+                        "finish_reason": 123,
+                    }
+                ]
+            },
+        )
+    )
+
+    events = Prober(BASE, "test", endpoints_filter=r"^/v1/chat/completions$").run()
+    phase_b = next(e for e in events if e.phase == "B")
+    assert phase_b.status == "FAIL"
+    assert "schema mismatch (ChatCompletionResponse)" in phase_b.detail
 
 
 @respx.mock
@@ -885,6 +969,65 @@ def test_endpoints_filter_restricts_probed_set():
     events = p.run()
     paths = {e.endpoint for e in events}
     assert paths == {"/v1/models"}
+
+
+@respx.mock
+def test_discovery_response_is_reused_for_models_phase_a_and_b():
+    """One discovery request also satisfies both /v1/models phases."""
+    models = respx.get(f"{BASE}/v1/models").mock(
+        return_value=httpx.Response(
+            200,
+            json={
+                "object": "list",
+                "data": [
+                    {
+                        "id": "chat-1",
+                        "object": "model",
+                        "created": 1,
+                        "owned_by": "test",
+                    }
+                ],
+            },
+        )
+    )
+
+    events = Prober(BASE, "test", endpoints_filter=r"^/v1/models$").run()
+    assert models.call_count == 1
+    assert [(e.phase, e.status) for e in events] == [("A", "PASS"), ("B", "PASS")]
+
+
+@respx.mock
+def test_phase_a_only_uses_one_shared_discovery_request():
+    models = respx.get(f"{BASE}/v1/models").mock(
+        return_value=httpx.Response(200, json={"data": [{"id": "chat-1"}]})
+    )
+    chat = respx.post(f"{BASE}/v1/chat/completions").mock(return_value=httpx.Response(422))
+
+    Prober(
+        BASE,
+        "test",
+        phase_b=False,
+        endpoints_filter=r"^/v1/chat/completions$",
+    ).run()
+    assert models.call_count == 1
+    assert chat.call_count == 1
+    assert len(respx.calls) == 2
+
+
+@respx.mock
+def test_missing_required_model_kind_skips_without_wrong_model_request():
+    respx.get(f"{BASE}/v1/models").mock(
+        return_value=httpx.Response(200, json={"data": [{"id": "chat-1"}]})
+    )
+    embeddings = respx.post(f"{BASE}/v1/embeddings").mock(
+        return_value=httpx.Response(422, json={"detail": "model required"})
+    )
+
+    events = Prober(BASE, "test", endpoints_filter=r"^/v1/embeddings$").run()
+    phase_b = next(e for e in events if e.phase == "B")
+    assert phase_b.status == "SKIP"
+    assert "no model of kind 'embed'" in phase_b.detail
+    assert embeddings.call_count == 1  # Phase A only
 
 
 # ---------------------------------------------------------------------------

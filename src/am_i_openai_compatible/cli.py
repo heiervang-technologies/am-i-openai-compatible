@@ -148,9 +148,8 @@ def build_parser() -> argparse.ArgumentParser:
         "--openai-api-key",
         default=None,
         help=(
-            "bearer token for WebSocket upgrades on /v1/realtime-style rows. "
-            "OSS servers usually accept the empty default; OpenAI-hosted "
-            "targets require a real key."
+            "bearer token for every REST request and WebSocket upgrade; "
+            "defaults to OPENAI_API_KEY, then AIOC_API_KEY"
         ),
     )
     sp.set_defaults(func=_cmd_probe)

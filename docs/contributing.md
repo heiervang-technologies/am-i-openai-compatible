@@ -20,13 +20,15 @@ Each entry is a frozen dataclass with:
 * `method` — `GET` / `POST` / `DELETE`.
 * `group` — a grouping for reporting. Reuse an existing one if you
   can; new groups should appear in the docs.
-* `kind` — `core`, `ext`, or `ours`. See
+* `kind` — `core`, `optional`, `ext`, or `ours`. See
   [Spec — Overview](spec/index.md).
 * `body` — the minimal valid request body for Phase B, or `None` for
   GET endpoints.
 * `expects` — the shape validator: a tuple of dotted keys that must
   be present in the JSON response, or one of the sentinel strings
   (`"audio"`, `"image"`, `"sse"`).
+* `response_model` — the name of a model in `schemas.py` when a full
+  Pydantic validator exists for the response.
 * `notes` — one-liner that ends up in the docs.
 
 Then update the appropriate spec page under `docs/spec/`.
