@@ -1045,6 +1045,36 @@ not pin in v1.1. Sketches here are non-normative.
 
 **Refinements to existing v1.x endpoints**
 
+* **Object-conditioned image-to-3D (SAM 3D Objects).** SAM-3D-class
+  models (e.g. `facebook/sam-3d-objects`) reconstruct **one selected
+  object** from a cluttered scene image — the distinctive input is a
+  segmentation prompt, not just the image. Sketch: an optional
+  `object_prompts` field on `/v1/3d/generations` reusing the
+  `/v1/segmentations` prompt objects verbatim (`point` / `box` /
+  `text` / `mask`, normalized `[0, 1]` coordinates, `label` 1/0):
+
+  ```json
+  {
+    "model": "sam-3d-objects",
+    "image_url": "data:image/png;base64,...",
+    "object_prompts": [
+      {"type": "point", "x": 0.62, "y": 0.41, "label": 1}
+    ],
+    "output_format": "glb"
+  }
+  ```
+
+  All prompts collapse to one object query (SAM convention): one mesh
+  per request, mirroring `/v1/segmentations` single-query semantics.
+  `object_prompts` requires `image_url`. The name is plural + prefixed
+  to avoid colliding with the existing text `prompt` refinement hint.
+  On completion, `data[]` entries MAY echo the selected object as
+  `source: {bbox, score}` (bbox in normalized `[0, 1]` coordinates)
+  so clients can verify the right object was reconstructed. A server
+  that supports `/v1/3d/generations` but not object conditioning
+  rejects the field with **400** and
+  `error.code: "object_prompts_not_supported"` (501 stays reserved
+  for whole-endpoint capability gating).
 * **Per-model capability advertisement.** Each entry in `/v1/models`
   gains an optional `x_ht_compat` field (e.g. `["reranking", "omni"]`)
   so clients can pick the right model without trial-and-error.
