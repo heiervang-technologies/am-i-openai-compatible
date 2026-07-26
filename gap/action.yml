@@ -1,0 +1,119 @@
+name: "am-i-openai-compatible gap"
+description: "Run the am-i-openai-compatible coverage-gap analyzer between monolith and cluster reports in CI."
+author: "Heiervang Technologies"
+branding:
+  icon: "columns"
+  color: "blue"
+
+inputs:
+  monolith-report:
+    description: "Path to the monolith JSON probe report."
+    required: true
+  cluster-reports:
+    description: "Path(s) to cluster/per-service JSON probe reports (space or newline separated)."
+    required: true
+  format:
+    description: "Output format: 'markdown' (default; CI & summary friendly), 'text', or 'gum'."
+    required: false
+    default: "markdown"
+  report-path:
+    description: "Where to write the rendered gap report."
+    required: false
+    default: "aioc-gap-report.md"
+  aioc-version:
+    description: "Which build to install: 'main', tag (e.g. 'v0.4.3'), or pip spec. Default 'main'."
+    required: false
+    default: "main"
+  python-version:
+    description: "Python version for the probe runtime."
+    required: false
+    default: "3.12"
+  upload-artifact:
+    description: "If true, upload the report as a workflow artifact named 'aioc-gap-report'."
+    required: false
+    default: "true"
+  step-summary:
+    description: "If true, append markdown gap report to GITHUB_STEP_SUMMARY."
+    required: false
+    default: "true"
+
+outputs:
+  report-path:
+    description: "Path to the generated gap report."
+    value: ${{ steps.gap.outputs.report-path }}
+  report-url:
+    description: "URL of the uploaded artifact (empty if upload-artifact is false)."
+    value: ${{ steps.upload.outputs.artifact-url }}
+
+runs:
+  using: "composite"
+  steps:
+    - name: Set up Python
+      uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405  # v6.2.0
+      with:
+        python-version: ${{ inputs.python-version }}
+
+    - name: Install am-i-openai-compatible
+      shell: bash
+      env:
+        AIOC_VERSION: ${{ inputs.aioc-version }}
+      run: |
+        python -m pip install --upgrade pip
+        case "$AIOC_VERSION" in
+          main)
+            python -m pip install "git+https://github.com/heiervang-technologies/am-i-openai-compatible.git"
+            ;;
+          git+*)
+            python -m pip install "$AIOC_VERSION"
+            ;;
+          v*|[0-9]*)
+            python -m pip install "git+https://github.com/heiervang-technologies/am-i-openai-compatible.git@$AIOC_VERSION"
+            ;;
+          *)
+            python -m pip install "$AIOC_VERSION"
+            ;;
+        esac
+        aioc --help >/dev/null
+
+    - name: Run aioc gap
+      id: gap
+      shell: bash
+      env:
+        MONOLITH: ${{ inputs.monolith-report }}
+        CLUSTERS: ${{ inputs.cluster-reports }}
+        FORMAT: ${{ inputs.format }}
+        REPORT_PATH: ${{ inputs.report-path }}
+        STEP_SUMMARY: ${{ inputs.step-summary }}
+      run: |
+        set -euo pipefail
+        args=(gap --monolith "$MONOLITH" --format "$FORMAT" -o "$REPORT_PATH")
+        for c in $CLUSTERS; do
+          if [ -n "$c" ]; then
+            args+=(--cluster "$c")
+          fi
+        done
+
+        rc=0
+        aioc "${args[@]}" || rc=$?
+
+        if [ -n "${GITHUB_OUTPUT:-}" ]; then
+          echo "report-path=$REPORT_PATH" >>"$GITHUB_OUTPUT"
+        fi
+
+        if [ "$STEP_SUMMARY" = "true" ] && [ -f "$REPORT_PATH" ]; then
+          if [ -n "${GITHUB_STEP_SUMMARY:-}" ]; then
+            cat "$REPORT_PATH" >>"$GITHUB_STEP_SUMMARY"
+          fi
+        fi
+
+        exit $rc
+
+    - name: Upload report artifact
+      id: upload
+      if: ${{ inputs.upload-artifact == 'true' }}
+      uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7.0.1
+      with:
+        name: aioc-gap-report
+        path: ${{ inputs.report-path }}
+        if-no-files-found: error
+        retention-days: 30

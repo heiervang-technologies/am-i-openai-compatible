@@ -87,7 +87,11 @@ def _cmd_probe(args: argparse.Namespace) -> int:
 def _cmd_gap(args: argparse.Namespace) -> int:
     from . import gap
 
-    forwarded = ["--monolith", args.monolith, "--cluster", args.cluster, "--format", args.format]
+    forwarded = ["--monolith", args.monolith]
+    clusters = args.cluster if isinstance(args.cluster, list) else [args.cluster]
+    for c in clusters:
+        forwarded += ["--cluster", c]
+    forwarded += ["--format", args.format]
     if args.output:
         forwarded += ["-o", args.output]
     return gap.main(forwarded)
@@ -157,7 +161,12 @@ def build_parser() -> argparse.ArgumentParser:
 
     sg = sub.add_parser("gap", help="compare monolith vs per-service reports")
     sg.add_argument("--monolith", required=True, help="probe report for the unified surface")
-    sg.add_argument("--cluster", required=True, help="report.json from the per-service harness")
+    sg.add_argument(
+        "--cluster",
+        required=True,
+        action="append",
+        help="report.json from the per-service harness (repeatable)",
+    )
     sg.add_argument("--format", choices=("text", "gum", "markdown"), default="text")
     sg.add_argument("-o", "--output", help="write rendered output here")
     sg.set_defaults(func=_cmd_gap)
