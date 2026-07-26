@@ -13,7 +13,7 @@ inputs:
     description: "Path(s) to cluster/per-service JSON probe reports (space or newline separated)."
     required: true
   format:
-    description: "Output format: 'markdown' (default; CI & summary friendly), 'text', or 'gum'."
+    description: "Output format: 'markdown' (default; CI & summary friendly) or 'text'."
     required: false
     default: "markdown"
   report-path:
@@ -86,7 +86,12 @@ runs:
         STEP_SUMMARY: ${{ inputs.step-summary }}
       run: |
         set -euo pipefail
-        args=(gap --monolith "$MONOLITH" --format "$FORMAT" -o "$REPORT_PATH")
+        format="$FORMAT"
+        if [ "$format" = "gum" ]; then
+          echo "::warning::'format: gum' is intended for interactive terminals and does not write file reports; falling back to 'markdown'."
+          format="markdown"
+        fi
+        args=(gap --monolith "$MONOLITH" --format "$format" -o "$REPORT_PATH")
         for c in $CLUSTERS; do
           if [ -n "$c" ]; then
             args+=(--cluster "$c")
@@ -110,7 +115,7 @@ runs:
 
     - name: Upload report artifact
       id: upload
-      if: ${{ inputs.upload-artifact == 'true' }}
+      if: ${{ !cancelled() && inputs.upload-artifact == 'true' }}
       uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7.0.1
       with:
         name: aioc-gap-report

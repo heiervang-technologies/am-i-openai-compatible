@@ -212,3 +212,31 @@ def test_gap_cli_multiple_cluster_reports():
         assert "svc1" in text
         assert "svc2" in text
 
+
+def test_gap_failing_path_creates_report_file_before_nonzero_exit():
+    """Verify that when aioc gap fails (BROKEN-IN-MONOLITH), the output
+    report file is still created on disk so CI artifact upload steps can
+    find and upload it."""
+    with tempfile.TemporaryDirectory() as d:
+        tmp = Path(d)
+        mp = _write(tmp, "mono.json", [_ev("/v1/chat/completions", status="FAIL")])
+        cp = _write(tmp, "clu.json", [_ev("/v1/chat/completions", status="PASS")])
+        out_path = tmp / "aioc-gap-report.md"
+
+        rc = gap.main(
+            [
+                "--monolith",
+                str(mp),
+                "--cluster",
+                str(cp),
+                "--format",
+                "markdown",
+                "-o",
+                str(out_path),
+            ]
+        )
+
+        assert rc != 0
+        assert out_path.exists()
+        assert out_path.stat().st_size > 0
+        assert "BROKEN-IN-MONOLITH" in out_path.read_text()
