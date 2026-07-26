@@ -180,3 +180,63 @@ def test_gap_markdown_format_returns_zero():
         # Sanity-check: the markdown table header is present
         assert "| Endpoint |" in text
         assert "/v1/chat/completions" in text
+
+
+def test_gap_cli_multiple_cluster_reports():
+    """Verify aioc gap CLI dispatch supports multiple --cluster flags."""
+    from am_i_openai_compatible import cli
+
+    with tempfile.TemporaryDirectory() as d:
+        tmp = Path(d)
+        mp = _write(tmp, "mono.json", [_ev("/v1/chat/completions")])
+        cp1 = _write(tmp, "clu1.json", [_ev("/v1/chat/completions", service="svc1")])
+        cp2 = _write(tmp, "clu2.json", [_ev("/v1/embeddings", service="svc2")])
+        out = tmp / "GAP.md"
+        rc = cli.main(
+            [
+                "gap",
+                "--monolith",
+                str(mp),
+                "--cluster",
+                str(cp1),
+                "--cluster",
+                str(cp2),
+                "--format",
+                "markdown",
+                "-o",
+                str(out),
+            ]
+        )
+        assert rc == 0
+        text = out.read_text()
+        assert "svc1" in text
+        assert "svc2" in text
+
+
+def test_gap_failing_path_creates_report_file_before_nonzero_exit():
+    """Verify that when aioc gap fails (BROKEN-IN-MONOLITH), the output
+    report file is still created on disk so CI artifact upload steps can
+    find and upload it."""
+    with tempfile.TemporaryDirectory() as d:
+        tmp = Path(d)
+        mp = _write(tmp, "mono.json", [_ev("/v1/chat/completions", status="FAIL")])
+        cp = _write(tmp, "clu.json", [_ev("/v1/chat/completions", status="PASS")])
+        out_path = tmp / "aioc-gap-report.md"
+
+        rc = gap.main(
+            [
+                "--monolith",
+                str(mp),
+                "--cluster",
+                str(cp),
+                "--format",
+                "markdown",
+                "-o",
+                str(out_path),
+            ]
+        )
+
+        assert rc != 0
+        assert out_path.exists()
+        assert out_path.stat().st_size > 0
+        assert "BROKEN-IN-MONOLITH" in out_path.read_text()
