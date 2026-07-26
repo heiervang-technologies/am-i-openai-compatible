@@ -79,7 +79,7 @@ def _cmd_probe(args: argparse.Namespace) -> int:
         forwarded += ["--profile", args.profile]
     if args.model:
         forwarded += ["--model", args.model]
-    if args.openai_api_key:
+    if args.openai_api_key is not None:
         forwarded += ["--openai-api-key", args.openai_api_key]
     return probe.main(forwarded)
 

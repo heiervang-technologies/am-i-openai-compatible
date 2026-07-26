@@ -1106,3 +1106,76 @@ def test_images_variations_row_is_pruned():
 def test_invalid_filter_regex_raises_at_construction():
     with pytest.raises(re.error):
         Prober(BASE, "test", endpoints_filter="(unbalanced")
+
+
+def test_bearer_token_normalization_and_prefix_stripping():
+    p = Prober(BASE, "test", api_key="  Bearer  sk-test-token  ")
+    assert p._bearer_token() == "sk-test-token"
+    assert p.client.headers["Authorization"] == "Bearer sk-test-token"
+    assert p._ws_headers()["Authorization"] == "Bearer sk-test-token"
+    p.client.close()
+
+
+def test_explicit_empty_api_key_overrides_environment(monkeypatch):
+    monkeypatch.setenv("OPENAI_API_KEY", "sk-env-key")
+    p = Prober(BASE, "test", api_key="")
+    assert p.api_key == ""
+    assert p._bearer_token() is None
+    assert "Authorization" not in p.client.headers
+    p.client.close()
+
+
+@respx.mock
+def test_liveness_timeout_skips_all_endpoints():
+    respx.get(f"{BASE}/v1/models").mock(side_effect=httpx.ReadTimeout("timeout"))
+
+    p = Prober(BASE, "test", endpoints_filter=r"^/v1/(models|chat)")
+    events = p.run()
+    assert events
+    assert all(e.status == "SKIP" for e in events)
+    assert all("connection timeout" in e.detail for e in events)
+
+
+@respx.mock
+def test_model_override_fallback_when_kind_unrecognized():
+    respx.get(f"{BASE}/v1/models").mock(
+        return_value=httpx.Response(200, json={"data": [{"id": "chat-1"}]})
+    )
+    embeddings = respx.post(f"{BASE}/v1/embeddings").mock(
+        return_value=httpx.Response(
+            200, json={"object": "list", "data": [{"object": "embedding", "index": 0, "embedding": [0.1]}], "model": "custom-vec"}
+        )
+    )
+
+    p = Prober(
+        BASE,
+        "test",
+        model="custom-vec-v1",
+        endpoints_filter=r"^/v1/embeddings$",
+    )
+    events = p.run()
+    phase_b = next(e for e in events if e.phase == "B")
+    assert phase_b.status == "PASS"
+    assert embeddings.calls.last.request.content.decode().find("custom-vec-v1") != -1
+
+
+@respx.mock
+def test_phase_b_sse_ignores_non_completion_control_events():
+    respx.get(f"{BASE}/v1/models").mock(
+        return_value=httpx.Response(200, json={"data": [{"id": "chat-1"}]})
+    )
+    sse_body = (
+        'data: {"type": "ping"}\n\n'
+        'data: {"id": "c1", "object": "chat.completion.chunk", "created": 1, "model": "m1", '
+        '"choices": [{"index": 0, "delta": {"content": "hi"}}]}\n\n'
+        'data: [DONE]\n\n'
+    )
+    respx.post(f"{BASE}/v1/chat/completions").mock(
+        return_value=httpx.Response(200, headers={"content-type": "text/event-stream"}, content=sse_body)
+    )
+
+    p = Prober(BASE, "test", endpoints_filter=r"^/v1/chat/completions\[stream\]$")
+    events = p.run()
+    phase_b = next(e for e in events if e.phase == "B")
+    assert phase_b.status == "PASS"
+

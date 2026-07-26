@@ -316,11 +316,14 @@ class Prober:
         self.profile = profile
         self.model_override = model or None
         self.api_key = (
-            api_key or os.environ.get("OPENAI_API_KEY") or os.environ.get("AIOC_API_KEY") or None
+            api_key
+            if api_key is not None
+            else (os.environ.get("OPENAI_API_KEY") or os.environ.get("AIOC_API_KEY") or None)
         )
         self.conn_timeout = conn_timeout
         self.req_timeout = req_timeout
-        headers = {"Authorization": f"Bearer {self.api_key}"} if self.api_key else None
+        token = self._bearer_token()
+        headers = {"Authorization": f"Bearer {token}"} if token else None
         self.client = httpx.Client(
             timeout=httpx.Timeout(req_timeout, connect=conn_timeout),
             http2=http2,
@@ -334,6 +337,17 @@ class Prober:
 
     # -- network primitives -------------------------------------------------
 
+    def _bearer_token(self) -> str | None:
+        """Return normalized bearer token without duplicate Bearer prefix or whitespace."""
+        if not self.api_key:
+            return None
+        raw = self.api_key.strip()
+        if not raw:
+            return None
+        if raw.lower().startswith("bearer "):
+            return raw[7:].strip()
+        return raw
+
     def _emit(self, ev: Event) -> None:
         self.events.append(ev)
 
@@ -344,8 +358,10 @@ class Prober:
             return True, f"GET /v1/models -> {r.status_code}"
         except httpx.ConnectError as e:
             return False, f"connection refused ({e.__class__.__name__})"
+        except httpx.TimeoutException as e:
+            return False, f"connection timeout ({e.__class__.__name__})"
         except httpx.HTTPError as e:
-            # 4xx on /v1/models still means the host is up.
+            # 4xx/5xx responses or other transport errors where host responded
             return True, f"reachable ({e.__class__.__name__})"
 
     def _sniff_models(self) -> None:
@@ -376,13 +392,13 @@ class Prober:
         Precedence:
           1. If --model NAME is set AND the override's classified kind
              includes ep.requires_model_kind (or ep has no kind
-             requirement), use the override. This handles the
-             router-mode case where /v1/models[0] is arbitrary and the
-             operator wants to pin a known-good model.
+             requirement), use the override.
           2. First model classified as ep.requires_model_kind.
-          3. For endpoints without a required kind, first model in
+          3. If no model of required kind was discovered in /v1/models but
+             --model NAME was explicitly provided, use the override.
+          4. For endpoints without a required kind, first model in
              /v1/models.
-          4. None — Phase B should SKIP rather than sending a request
+          5. None — Phase B should SKIP rather than sending a request
              to a model known to be the wrong kind.
         """
         if self.model_override:
@@ -391,16 +407,17 @@ class Prober:
             if ep.requires_model_kind is None or ep.requires_model_kind in override_kinds:
                 return override
             # Override doesn't match the endpoint's required kind; fall
-            # through to the kind-based selection so e.g.
-            # `--model borealis-4b` doesn't break /v1/embeddings.
+            # through to kind-based selection, but retain override as fallback.
         if ep.requires_model_kind:
             opts = self.models_by_kind.get(ep.requires_model_kind, [])
             if opts:
                 return opts[0]
+            if self.model_override:
+                return self.model_override
             return None
         if self._models_raw:
             return self._models_raw[0].get("id")
-        return None
+        return self.model_override
 
     # -- WebSocket primitives -----------------------------------------------
 
@@ -411,8 +428,9 @@ class Prober:
 
     def _ws_headers(self) -> dict[str, str]:
         h: dict[str, str] = {}
-        if self.api_key:
-            h["Authorization"] = f"Bearer {self.api_key}"
+        token = self._bearer_token()
+        if token:
+            h["Authorization"] = f"Bearer {token}"
         # OpenAI's Realtime API uses the openai-beta subprotocol header.
         # Cheap to set; servers that don't care ignore it.
         h["openai-beta"] = "realtime=v1"
@@ -723,6 +741,12 @@ class Prober:
                         evt = json.loads(data)
                     except ValueError:
                         continue
+                    if isinstance(evt, dict):
+                        # Ignore non-completion control/ping events
+                        if evt.get("type") in ("ping", "keep-alive") or evt.get("event") in ("ping", "keep-alive"):
+                            continue
+                        if ep.response_model == "ChatCompletionChunk" and evt.get("object") != "chat.completion.chunk" and "choices" not in evt:
+                            continue
                     schema_error = self._pydantic_error(ep, evt)
                     if schema_error:
                         return "FAIL", f"SSE {schema_error}", status
