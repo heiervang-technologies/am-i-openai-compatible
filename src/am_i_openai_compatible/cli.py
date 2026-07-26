@@ -15,7 +15,8 @@ Subcommands:
 
     aioc render REPORT [--limit N] [--no-color]
         Render a probe JSON report as a colored ANSI table. One row per
-        endpoint (FAIL > WARN > Phase B PASS > Phase A PASS > SKIP).
+        endpoint (FAIL > WARN > Phase C PASS > Phase B PASS >
+        Phase A PASS > SKIP).
 
     aioc version
         Print version and exit.

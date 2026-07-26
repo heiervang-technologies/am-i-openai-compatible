@@ -21,7 +21,8 @@ not bleeding-edge — that's not a defect.
 
 ## Phases
 
-The prober runs every endpoint through up to two phases:
+The prober runs every endpoint through up to two request phases, then
+derives cross-endpoint implications when their prerequisites are available:
 
 * **Phase A — existence.** Send the cheapest probe that should not
   return `404`. Anything else (`200`, `400`, `405`, `415`, `422`,
@@ -30,6 +31,10 @@ The prober runs every endpoint through up to two phases:
   Rows with a registered response model are Pydantic-validated after
   their content/key checks; rows without one enforce the dotted-key
   contract in the catalog. Extras are allowed.
+* **Phase C — implications.** Compare responses already collected in
+  Phase B without sending more requests. The models list→retrieve rule,
+  for example, checks that retrieving a listed model id returns that same
+  id. Unavailable prerequisites produce `SKIP`.
 
 Phase B is skipped when:
 
@@ -38,6 +43,9 @@ Phase B is skipped when:
 * `--skip-phase-b` is passed.
 * No usable model can be sniffed from `/v1/models` for an endpoint
   that needs one. (Then it reports `SKIP — no model available`.)
+
+Passing `--skip-phase-b` also disables Phase C because there are no
+validated response signatures to compare.
 
 ## Where the catalog lives
 

@@ -6,6 +6,12 @@ versions follow [SemVer](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+
+- Phase C implication reporting now checks `/v1/models` list→retrieve
+  consistency from existing Phase B responses, with no additional
+  network request.
+
 ### Fixed
 
 - Bearer authentication now applies to REST and WebSocket probes, with

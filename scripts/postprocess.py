@@ -45,19 +45,24 @@ def _argparser() -> argparse.ArgumentParser:
 def _best_event_for(events: list[dict], endpoint: str) -> dict | None:
     """Pick the most informative event for an endpoint.
 
-    Priority: any FAIL > any WARN > Phase B PASS > Phase A PASS > SKIP.
+    Priority: any FAIL > any WARN > Phase C PASS > Phase B PASS >
+    Phase A PASS > SKIP.
     Mirrors the prioritization in gap.py so the summary tells the same
     story as the gap report.
     """
     rank = {
         ("A", "FAIL"): 0,
         ("B", "FAIL"): 0,
+        ("C", "FAIL"): 0,
         ("A", "WARN"): 1,
         ("B", "WARN"): 1,
-        ("B", "PASS"): 2,
-        ("A", "PASS"): 3,
-        ("A", "SKIP"): 4,
-        ("B", "SKIP"): 4,
+        ("C", "WARN"): 1,
+        ("C", "PASS"): 2,
+        ("B", "PASS"): 3,
+        ("A", "PASS"): 4,
+        ("A", "SKIP"): 5,
+        ("B", "SKIP"): 5,
+        ("C", "SKIP"): 5,
     }
     matches = [e for e in events if e.get("endpoint") == endpoint]
     if not matches:
@@ -92,17 +97,17 @@ def _write_summary(events: list[dict], counts: dict[str, int], service: str) -> 
     openai_eps = [ep for ep in ENDPOINTS if ep.kind != "ours"]
     ht_eps = [ep for ep in ENDPOINTS if ep.kind == "ours"]
 
-    def _section(title: str, eps: list) -> list[str]:
+    def _section(title: str, endpoint_labels: list[str]) -> list[str]:
         block: list[str] = []
         rows: list[str] = []
-        for ep in eps:
-            best = _best_event_for(events, ep.path)
+        for endpoint in endpoint_labels:
+            best = _best_event_for(events, endpoint)
             if best is None:
                 continue
             status = best.get("status", "")
             icon = ICON.get(status, "?")
             detail = (best.get("detail") or "").replace("|", "\\|")[:120]
-            rows.append(f"| `{ep.path}` | {icon} {status} | {detail} |")
+            rows.append(f"| `{endpoint}` | {icon} {status} | {detail} |")
         if not rows:
             return block
         block.append(f"### {title}")
@@ -113,8 +118,10 @@ def _write_summary(events: list[dict], counts: dict[str, int], service: str) -> 
         block.append("")
         return block
 
-    lines.extend(_section("OpenAI compat", openai_eps))
-    lines.extend(_section("HT compat", ht_eps))
+    lines.extend(_section("OpenAI compat", [ep.path for ep in openai_eps]))
+    lines.extend(_section("HT compat", [ep.path for ep in ht_eps]))
+    implication_labels = list(dict.fromkeys(e["endpoint"] for e in events if e.get("phase") == "C"))
+    lines.extend(_section("Implications", implication_labels))
 
     with open(path, "a") as f:
         f.write("\n".join(lines) + "\n")

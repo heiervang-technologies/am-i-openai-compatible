@@ -4,15 +4,23 @@ The long tail of "almost spec" behavior. Things every client
 eventually trips over even though no single behavior is a hard
 violation.
 
-## Implication tests (planned)
+## Implication tests (Phase C)
 
 Beyond per-endpoint shape checks, there are *implication* checks the
 prober treats as a third phase: properties that should hold across
-endpoints if a server is internally consistent. Examples:
+endpoints if a server is internally consistent. Phase C reuses Phase B
+responses and does not add network calls.
 
-* **list → retrieve.** If `/v1/models` lists `id`, then
-  `/v1/models/{id}` should return the same id (or 404, but never a
-  *different* id).
+The implemented rule is:
+
+* **list → retrieve.** If `/v1/models` lists `id` and
+  `/v1/models/{id}` returns a valid model object, the returned id must
+  be the same. A match is `PASS`, a different id is `WARN`, and missing
+  or invalid prerequisite responses are `SKIP`. The report label is
+  `implies: models list→retrieve`.
+
+Planned rules include:
+
 * **chat ↔ completion logprobs.** If `/v1/chat/completions` accepts
   `logprobs: true`, then a basic chat call with `logprobs: true`
   should have `choices[0].logprobs` populated. Servers that *accept
@@ -25,8 +33,8 @@ endpoints if a server is internally consistent. Examples:
   honor `seed` will fail this even when both responses are individually
   spec-valid.
 
-These don't all run today (some need stable-output models that aren't
-worth assuming), but the catalog reserves them as a future Phase C.
+The remaining rules do not run today; some need stable-output models
+that are not worth assuming.
 
 ## Quirks worth flagging
 

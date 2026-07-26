@@ -98,21 +98,22 @@ Endpoint                        Status    Detail
 ```
 
 `render` picks one event per endpoint by priority: FAIL > WARN > Phase
-B PASS > Phase A PASS > SKIP. Status semantics:
+C PASS > Phase B PASS > Phase A PASS > SKIP. Status semantics:
 
 * `PASS` — Phase A: route exists (any non-404 reply). Phase B: response
-  body validates against the spec.
+  body validates against the spec. Phase C: the responses satisfy a
+  cross-endpoint consistency rule.
 * `WARN` — capability-gated (404 on an `optional` row, or 501 with the
-  canonical OpenAI error envelope). Server is honest about what it
-  doesn't serve.
+  canonical OpenAI error envelope), or a Phase C consistency mismatch.
 * `FAIL` — 404 on a `core` row, schema mismatch on Phase B, or a 404
   on an HT-compat `ours` row under `--profile ht`.
 * `SKIP` — Phase A unreachable, a missing `ext` route, or Phase B with
-  no model of the required kind discoverable from `/v1/models`.
+  no model of the required kind discoverable from `/v1/models`. A
+  Phase C rule also skips when its prerequisite responses are unavailable.
 
 ## What the prober does
 
-Two phases per endpoint:
+Two request phases plus derived consistency checks:
 
 * **Phase A — existence.** A minimal probe (`GET`, `OPTIONS`, or empty
   `POST`) decides if the route is wired up at all. Anything other than
@@ -123,6 +124,10 @@ Two phases per endpoint:
   until a full model is available. Bodies are tiny: `max_tokens=4`,
   512×512 images, 1 s of silent WAV. Video creation is tested via job
   submission only — the prober never waits for completion.
+* **Phase C — implications.** Compare responses already collected in
+  Phase B. The first implemented rule checks that an id listed by
+  `/v1/models` is returned unchanged by `/v1/models/{id}`. Phase C
+  never sends another request.
 
 Total budget: **one shared `/v1/models` discovery/liveness request, then
 ≤ 2 requests per selected endpoint**. The discovery response is reused

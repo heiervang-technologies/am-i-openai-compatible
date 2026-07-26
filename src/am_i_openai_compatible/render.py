@@ -1,7 +1,8 @@
 """ANSI table renderer for `aioc probe` JSON reports.
 
 One row per endpoint (dedup via the same priority rule as the GitHub
-Action step-summary: FAIL > WARN > Phase B PASS > Phase A PASS > SKIP).
+Action step-summary: FAIL > WARN > Phase C PASS > Phase B PASS >
+Phase A PASS > SKIP).
 Colors are stripped when stdout isn't a TTY, so the output stays
 pipe-friendly.
 """
@@ -17,12 +18,16 @@ COLOR = {"PASS": "32", "WARN": "33", "FAIL": "31", "SKIP": "90"}
 _RANK = {
     ("A", "FAIL"): 0,
     ("B", "FAIL"): 0,
+    ("C", "FAIL"): 0,
     ("A", "WARN"): 1,
     ("B", "WARN"): 1,
-    ("B", "PASS"): 2,
-    ("A", "PASS"): 3,
-    ("A", "SKIP"): 4,
-    ("B", "SKIP"): 4,
+    ("C", "WARN"): 1,
+    ("C", "PASS"): 2,
+    ("B", "PASS"): 3,
+    ("A", "PASS"): 4,
+    ("A", "SKIP"): 5,
+    ("B", "SKIP"): 5,
+    ("C", "SKIP"): 5,
 }
 
 

@@ -18,6 +18,7 @@ import pytest
 import respx
 
 from am_i_openai_compatible.probe import (
+    MODEL_LIST_RETRIEVE_IMPLICATION,
     Prober,
     _classify_kind,
     _get_dotted,
@@ -994,6 +995,121 @@ def test_discovery_response_is_reused_for_models_phase_a_and_b():
     events = Prober(BASE, "test", endpoints_filter=r"^/v1/models$").run()
     assert models.call_count == 1
     assert [(e.phase, e.status) for e in events] == [("A", "PASS"), ("B", "PASS")]
+
+
+def _model(model_id: str) -> dict:
+    return {
+        "id": model_id,
+        "object": "model",
+        "created": 1,
+        "owned_by": "test",
+    }
+
+
+@respx.mock
+def test_phase_c_models_list_retrieve_consistency_passes_without_extra_request():
+    models = respx.get(f"{BASE}/v1/models").mock(
+        return_value=httpx.Response(200, json={"object": "list", "data": [_model("chat-1")]})
+    )
+    retrieve = respx.get(f"{BASE}/v1/models/chat-1").mock(
+        return_value=httpx.Response(200, json=_model("chat-1"))
+    )
+
+    events = Prober(BASE, "test", endpoints_filter=r"^/v1/models").run()
+    implication = next(e for e in events if e.endpoint == MODEL_LIST_RETRIEVE_IMPLICATION)
+
+    assert implication.phase == "C"
+    assert implication.status == "PASS"
+    assert implication.detail == "listed id 'chat-1' retrieved consistently"
+    assert implication.http_status == 200
+    assert models.call_count == 1
+    assert retrieve.call_count == 2  # Phase A + Phase B; Phase C is derived.
+    assert len(respx.calls) == 3
+
+
+@respx.mock
+def test_phase_c_models_list_retrieve_id_mismatch_warns():
+    respx.get(f"{BASE}/v1/models").mock(
+        return_value=httpx.Response(200, json={"object": "list", "data": [_model("chat-1")]})
+    )
+    respx.get(f"{BASE}/v1/models/chat-1").mock(
+        return_value=httpx.Response(200, json=_model("other-model"))
+    )
+
+    events = Prober(BASE, "test", endpoints_filter=r"^/v1/models").run()
+    implication = next(e for e in events if e.endpoint == MODEL_LIST_RETRIEVE_IMPLICATION)
+
+    assert implication.phase == "C"
+    assert implication.status == "WARN"
+    assert implication.detail == "listed id 'chat-1', retrieve returned 'other-model'"
+
+
+@respx.mock
+def test_phase_c_models_empty_list_skips():
+    respx.get(f"{BASE}/v1/models").mock(
+        return_value=httpx.Response(200, json={"object": "list", "data": []})
+    )
+    respx.get(f"{BASE}/v1/models/__probe_nonexistent__").mock(
+        return_value=httpx.Response(400, json={"error": {"message": "model required"}})
+    )
+
+    events = Prober(BASE, "test", endpoints_filter=r"^/v1/models").run()
+    implication = next(e for e in events if e.endpoint == MODEL_LIST_RETRIEVE_IMPLICATION)
+
+    assert implication.phase == "C"
+    assert implication.status == "SKIP"
+    assert implication.detail == "model list contains no usable id"
+
+
+@respx.mock
+def test_phase_c_not_emitted_without_both_selected_endpoints():
+    respx.get(f"{BASE}/v1/models").mock(
+        return_value=httpx.Response(200, json={"object": "list", "data": [_model("chat-1")]})
+    )
+
+    events = Prober(BASE, "test", endpoints_filter=r"^/v1/models$").run()
+
+    assert not any(e.phase == "C" for e in events)
+
+
+@respx.mock
+def test_phase_c_not_emitted_when_phase_b_is_disabled():
+    respx.get(f"{BASE}/v1/models").mock(
+        return_value=httpx.Response(200, json={"object": "list", "data": [_model("chat-1")]})
+    )
+    respx.get(f"{BASE}/v1/models/chat-1").mock(return_value=httpx.Response(200))
+
+    events = Prober(
+        BASE,
+        "test",
+        phase_b=False,
+        endpoints_filter=r"^/v1/models",
+    ).run()
+
+    assert not any(e.phase == "C" for e in events)
+
+
+@respx.mock
+def test_invalid_first_discovery_entry_does_not_crash_model_templating():
+    respx.get(f"{BASE}/v1/models").mock(
+        return_value=httpx.Response(
+            200,
+            json={
+                "object": "list",
+                "data": [{"object": "model"}, _model("chat-1")],
+            },
+        )
+    )
+    retrieve = respx.get(f"{BASE}/v1/models/chat-1").mock(
+        return_value=httpx.Response(200, json=_model("chat-1"))
+    )
+
+    events = Prober(BASE, "test", endpoints_filter=r"^/v1/models").run()
+
+    assert retrieve.call_count == 2
+    implication = next(e for e in events if e.endpoint == MODEL_LIST_RETRIEVE_IMPLICATION)
+    assert implication.status == "SKIP"
+    assert implication.detail == "model list signature unavailable"
 
 
 @respx.mock

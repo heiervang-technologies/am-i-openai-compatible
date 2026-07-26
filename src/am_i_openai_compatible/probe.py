@@ -1,7 +1,7 @@
 """Generic OpenAI-compat prober.
 
 Probes any base URL against the canonical OpenAI surface declared in
-endpoints.py. Two phases:
+endpoints.py. Two request phases and one derived phase:
 
   Phase A — existence (no auth needed). For each endpoint we send a
   minimal probe (GET, OPTIONS, or a deliberately-empty POST) and treat
@@ -11,6 +11,9 @@ endpoints.py. Two phases:
   minimal valid request and validate the response shape. We sniff a
   model id from /v1/models when needed; a missing model list disables
   Phase B and reports SKIP.
+
+  Phase C — implications. We compare already-collected responses for
+  cross-endpoint consistency without issuing additional requests.
 
 Output is JSON with the same schema as the per-service harness, so the
 existing check.sh renderer can display a probe report unchanged.
@@ -78,6 +81,8 @@ RESPONSE_MODELS: dict[str, type[BaseModel]] = {
     )
 }
 
+MODEL_LIST_RETRIEVE_IMPLICATION = "implies: models list→retrieve"
+
 # ---------------------------------------------------------------------------
 # Tiny synthetic media — kept frugal (1 s of silence, 1×1 PNG) to minimize
 # bandwidth and decoder cost on the server.
@@ -111,7 +116,7 @@ def _tiny_png() -> bytes:
 class Event:
     service: str  # for the prober this is the --name argument
     endpoint: str  # the endpoint label (path + group hint)
-    phase: str  # "A" / "B"
+    phase: str  # "A" / "B" / "C"
     status: str  # PASS / WARN / FAIL / SKIP
     detail: str
     method: str = ""
@@ -333,6 +338,9 @@ class Prober:
         self.models_by_kind: dict[str, list[str]] = {}
         self._models_raw: list[dict] = []
         self._models_response: httpx.Response | None = None
+        self._model_retrieve_expected_id: str | None = None
+        self._model_retrieve_body: Any = None
+        self._model_retrieve_http_status = 0
         self._endpoints_filter = re.compile(endpoints_filter) if endpoints_filter else None
 
     # -- network primitives -------------------------------------------------
@@ -386,6 +394,17 @@ class Prober:
 
     # -- model selection ----------------------------------------------------
 
+    def _first_model_id(self) -> str | None:
+        """Return the first usable model id from the discovery response."""
+        return next(
+            (
+                model_id
+                for model in self._models_raw
+                if isinstance((model_id := model.get("id")), str) and model_id
+            ),
+            None,
+        )
+
     def _pick_model(self, ep: Endpoint) -> str | None:
         """Pick a model id to use for this endpoint's probe.
 
@@ -415,8 +434,8 @@ class Prober:
             if self.model_override:
                 return self.model_override
             return None
-        if self._models_raw:
-            return self._models_raw[0].get("id")
+        if model_id := self._first_model_id():
+            return model_id
         return self.model_override
 
     # -- WebSocket primitives -----------------------------------------------
@@ -632,9 +651,12 @@ class Prober:
     def _phase_b_get(self, ep: Endpoint) -> tuple[str, str, int]:
         path = ep.path.split("[")[0]
         if "{model}" in path:
-            if not self._models_raw:
+            model_id = self._first_model_id()
+            if model_id is None:
                 return "SKIP", "no models to template", 0
-            path = path.replace("{model}", self._models_raw[0]["id"])
+            path = path.replace("{model}", model_id)
+            if ep.path == "/v1/models/{model}":
+                self._model_retrieve_expected_id = model_id
         try:
             if ep.path == "/v1/models" and self._models_response is not None:
                 r = self._models_response
@@ -642,6 +664,8 @@ class Prober:
                 r = self.client.get(self.base + path)
         except httpx.HTTPError as e:
             return "FAIL", f"http error: {e}", 0
+        if ep.path == "/v1/models/{model}":
+            self._model_retrieve_http_status = r.status_code
         if r.status_code == 501:
             return "WARN", f"501 — {_server_error_message(r)}", 501
         if r.status_code != 200:
@@ -650,6 +674,8 @@ class Prober:
             body = r.json()
         except ValueError:
             return "FAIL", "non-JSON response", r.status_code
+        if ep.path == "/v1/models/{model}":
+            self._model_retrieve_body = body
         return self._validate_shape(ep, body, r.status_code)
 
     def _phase_b_post(self, ep: Endpoint, model_id: str | None) -> tuple[str, str, int]:
@@ -847,6 +873,65 @@ class Prober:
             eps = [e for e in eps if self._endpoints_filter.search(e.path)]
         return eps
 
+    def _phase_status(self, endpoint: str, phase: str) -> str | None:
+        """Return the emitted status for one endpoint phase."""
+        return next(
+            (
+                event.status
+                for event in self.events
+                if event.endpoint == endpoint and event.phase == phase
+            ),
+            None,
+        )
+
+    def _run_phase_c(self, endpoints: list[Endpoint]) -> None:
+        """Derive cross-endpoint implications from Phase B responses."""
+        if not self.phase_b:
+            return
+
+        selected = {endpoint.path for endpoint in endpoints}
+        prerequisites = {"/v1/models", "/v1/models/{model}"}
+        if not prerequisites.issubset(selected):
+            return
+
+        if self._phase_status("/v1/models", "B") != "PASS":
+            status = "SKIP"
+            detail = "model list signature unavailable"
+        elif self._first_model_id() is None:
+            status = "SKIP"
+            detail = "model list contains no usable id"
+        elif self._phase_status("/v1/models/{model}", "B") != "PASS":
+            status = "SKIP"
+            detail = "model retrieve signature unavailable"
+        else:
+            expected = self._model_retrieve_expected_id
+            actual = (
+                self._model_retrieve_body.get("id")
+                if isinstance(self._model_retrieve_body, dict)
+                else None
+            )
+            if actual == expected:
+                status = "PASS"
+                detail = f"listed id {expected!r} retrieved consistently"
+            else:
+                status = "WARN"
+                detail = f"listed id {expected!r}, retrieve returned {actual!r}"
+
+        self._emit(
+            Event(
+                service=self.name,
+                endpoint=MODEL_LIST_RETRIEVE_IMPLICATION,
+                phase="C",
+                status=status,
+                detail=detail,
+                method="GET→GET",
+                http_status=self._model_retrieve_http_status,
+                kind="core",
+                group="models",
+                profile=self.profile,
+            )
+        )
+
     def run(self) -> list[Event]:
         endpoints = self._endpoints()
         live, why = self._liveness()
@@ -914,6 +999,7 @@ class Prober:
                 )
             )
 
+        self._run_phase_c(endpoints)
         return self.events
 
 
